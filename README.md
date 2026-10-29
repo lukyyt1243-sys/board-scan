@@ -1,0 +1,2 @@
+# board-scan
+Chess helper
