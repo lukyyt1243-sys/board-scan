@@ -146,6 +146,9 @@ button:focus-visible, .sq:focus-visible { outline: 2px solid var(--brass); outli
 .camview { position: relative; width: 100%; aspect-ratio: 4 / 3; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; display: grid; place-items: center; }
 .camview video, .camview canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .camoff { color: var(--muted); font: 500 12px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; margin: 0; }
+.zoomrow { display: grid; grid-template-columns: auto 1fr 3.2em; align-items: center; gap: 12px; font: 500 12px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.zoomrow input { width: 100%; accent-color: var(--brass); min-height: 32px; }
+.zoomrow output { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
 .status { margin: 0; display: flex; align-items: center; gap: 8px; font: 500 12px/1.2 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
 .status[data-s="watch"] .dot { background: var(--good); }
@@ -191,12 +194,13 @@ button:focus-visible, .sq:focus-visible { outline: 2px solid var(--brass); outli
 
 <div class="wrap">
   <header class="top">
-    <h1 class="brand">Board Scan <span class="ver">v2</span></h1>
+    <h1 class="brand">Board Scan <span class="ver">v3</span></h1>
     <span class="chip" id="engineChip" data-s="load">Engine loading</span>
   </header>
 
   <section class="cam">
     <div class="camview" id="camView"><video id="video" playsinline muted autoplay></video><canvas id="camOverlay"></canvas><p class="camoff" id="camOff">Camera is off</p></div>
+    <div class="zoomrow" id="zoomRow" hidden><label for="zoom">Zoom</label><input type="range" id="zoom" min="1" max="4" step="0.1" value="1"><output id="zoomVal" for="zoom">1.0×</output></div>
     <p class="status" id="status" data-s="off"><span class="dot"></span><span id="statusText">Camera off</span></p>
   </section>
 
@@ -242,7 +246,7 @@ button:focus-visible, .sq:focus-visible { outline: 2px solid var(--brass); outli
     <p class="fen" id="fen"></p>
   </section>
 
-  <p class="foot">Phone on a stand, as high and as straight above the board as you can. Keep this page open with the screen on; it stops watching if you switch apps. Moves are read once hands leave the board for about a second. Engine: Stockfish 10 (GPLv3). Rules: chess.js (BSD).</p>
+  <p class="foot">Phone above the board; use Zoom so the board fills most of the picture before you lock it. A bit of sway is fine, the board grid follows it. Keep this page open with the screen on; it stops watching if you switch apps. Moves are read once hands leave the board for about a second. Engine: Stockfish 10 (GPLv3). Rules: chess.js (BSD).</p>
 </div>
 
 
@@ -351,30 +355,49 @@ var Vision = (function () {
     }
   }
 
-  // Sample the inner area of every square. dx/dy shift the samples in image pixels (registration).
-  function sampleSquares(img, H, dx, dy) {
-    dx = dx || 0; dy = dy || 0;
-    var out = new Uint8Array(64 * G * G * 3);
-    var tmp = [0, 0, 0];
-    var span = 1 - 2 * MARGIN;
+  var ALL = [], SUB = [];
+  for (var c0 = 0; c0 < G * G; c0++) {
+    ALL.push(c0);
+    if ([1, 5, 8].indexOf(c0 % G) >= 0 && [1, 5, 8].indexOf((c0 / G) | 0) >= 0) SUB.push(c0);
+  }
+
+  function boardCenter(H) { return applyH(H, 4, 4); }
+
+  // Move an image point by a small camera motion: rotation about the board centre, then a shift (pixels).
+  function warp(x, y, t, c) {
+    var r = t.rot || 0;
+    if (r) { var cs = Math.cos(r), sn = Math.sin(r), ux = x - c[0], uy = y - c[1]; x = c[0] + cs * ux - sn * uy; y = c[1] + sn * ux + cs * uy; }
+    return [x + (t.dx || 0), y + (t.dy || 0)];
+  }
+
+  // Sample the inner area of every square. dx/dy/rot describe camera motion since the reference (registration).
+  // cells: optional subset of the G x G sample grid (used for fast tracking).
+  function sampleSquares(img, H, dx, dy, rot, cells) {
+    var t = { dx: dx || 0, dy: dy || 0, rot: rot || 0 }, c = boardCenter(H), moved = t.dx || t.dy || t.rot;
+    cells = cells || ALL;
+    var n = cells.length, out = new Uint8Array(64 * n * 3), tmp = [0, 0, 0], span = 1 - 2 * MARGIN;
     for (var s = 0; s < 64; s++) {
       var f = s % 8, r = (s / 8) | 0;
-      for (var j = 0; j < G; j++) {
-        for (var i = 0; i < G; i++) {
-          var bx = f + MARGIN + span * (i + 0.5) / G;
-          var by = r + MARGIN + span * (j + 0.5) / G;
-          var p = applyH(H, bx, by);
-          sampleRGB(img, p[0] + dx, p[1] + dy, tmp, 0);
-          var o = (s * G * G + j * G + i) * 3;
-          out[o] = tmp[0]; out[o + 1] = tmp[1]; out[o + 2] = tmp[2];
-        }
+      for (var k = 0; k < n; k++) {
+        var cell = cells[k], i = cell % G, j = (cell / G) | 0;
+        var p = applyH(H, f + MARGIN + span * (i + 0.5) / G, r + MARGIN + span * (j + 0.5) / G);
+        if (moved) p = warp(p[0], p[1], t, c);
+        sampleRGB(img, p[0], p[1], tmp, 0);
+        var o = (s * n + k) * 3;
+        out[o] = tmp[0]; out[o + 1] = tmp[1]; out[o + 2] = tmp[2];
       }
     }
     return out;
   }
 
+  function pick(F, cells) {
+    var n = cells.length, out = new Uint8Array(64 * n * 3), N = G * G;
+    for (var s = 0; s < 64; s++) for (var k = 0; k < n; k++) for (var c = 0; c < 3; c++) out[(s * n + k) * 3 + c] = F[(s * N + cells[k]) * 3 + c];
+    return out;
+  }
+
   function squareMeans(F) {
-    var n = G * G, m = new Float32Array(64 * 3);
+    var n = F.length / 192, m = new Float32Array(64 * 3);
     for (var s = 0; s < 64; s++) {
       var a = 0, b = 0, c = 0, base = s * n * 3;
       for (var k = 0; k < n; k++) { a += F[base + k * 3]; b += F[base + k * 3 + 1]; c += F[base + k * 3 + 2]; }
@@ -402,7 +425,7 @@ var Vision = (function () {
       }
       gain[c] = ratios.length > 8 ? Math.min(3, Math.max(0.33, median(ratios))) : 1;
     }
-    var n = G * G, d = new Float32Array(64);
+    var n = prev.length / 192, d = new Float32Array(64);
     for (var s2 = 0; s2 < 64; s2++) {
       var base = s2 * n * 3, sum = 0;
       for (var k = 0; k < n; k++) {
@@ -420,21 +443,56 @@ var Vision = (function () {
     return t / 48;
   }
 
-  // Find the small board-space shift that best lines the new photo up with the reference.
-  function register(img, H, prev, ox, oy) {
-    ox = ox || 0; oy = oy || 0;
-    var best = { cost: Infinity, dx: ox, dy: oy };
-    function tryAt(dx, dy) {
-      var F = sampleSquares(img, H, dx, dy);
+  // Fine alignment of a new frame to the reference around a starting camera motion (ox, oy, orot).
+  function register(img, H, prev, ox, oy, orot, refineRot) {
+    ox = ox || 0; oy = oy || 0; orot = orot || 0;
+    var best = { cost: Infinity, dx: ox, dy: oy, rot: orot };
+    function tryAt(dx, dy, rot) {
+      var F = sampleSquares(img, H, dx, dy, rot);
       var d = diffFeatures(prev, F);
       var c = robustCost(d);
-      if (c < best.cost) best = { cost: c, dx: dx, dy: dy, feats: F, d: d };
+      if (c < best.cost) best = { cost: c, dx: dx, dy: dy, rot: rot, feats: F, d: d };
     }
-    var sq = squarePx(H), step = sq * 0.07, fine = sq * 0.025, k;
-    for (var j = -3; j <= 3; j++) for (k = -3; k <= 3; k++) tryAt(ox + j * step, oy + k * step);
+    var sq = squarePx(H), step = sq * 0.07, fine = sq * 0.025, k, DEG = Math.PI / 180;
+    for (var j = -3; j <= 3; j++) for (k = -3; k <= 3; k++) tryAt(ox + j * step, oy + k * step, orot);
     var cx = best.dx, cy = best.dy;
-    for (var j2 = -2; j2 <= 2; j2++) for (k = -2; k <= 2; k++) if (j2 || k) tryAt(cx + j2 * fine, cy + k * fine);
+    for (var j2 = -2; j2 <= 2; j2++) for (k = -2; k <= 2; k++) if (j2 || k) tryAt(cx + j2 * fine, cy + k * fine, orot);
+    if (orot || refineRot) {   // the camera turned a little: refine the angle too
+      var r0 = best.rot;
+      [-0.6, -0.45, -0.3, -0.15, 0.15, 0.3, 0.45, 0.6].forEach(function (a) { tryAt(best.dx, best.dy, r0 + a * DEG); });
+      var ex = best.dx, ey = best.dy, er = best.rot;
+      for (j2 = -1; j2 <= 1; j2++) for (k = -1; k <= 1; k++) if (j2 || k) tryAt(ex + j2 * fine * 0.6, ey + k * fine * 0.6, er);
+    }
     return best;
+  }
+
+  // Fast per-frame tracking of camera motion (a swinging phone): shift up to +-range squares and a few
+  // degrees of rotation, using a 3x3 subset of samples per square. Returns the motion, full samples and change map.
+  function track(img, H, ref, t0, range) {
+    t0 = t0 || { dx: 0, dy: 0, rot: 0 }; range = range || 0.6;
+    var sq = squarePx(H), refSub = pick(ref, SUB), best = { cost: Infinity, dx: t0.dx, dy: t0.dy, rot: t0.rot };
+    function tryAt(dx, dy, rot) {
+      var c = robustCost(diffFeatures(refSub, sampleSquares(img, H, dx, dy, rot, SUB)));
+      if (c < best.cost) best = { cost: c, dx: dx, dy: dy, rot: rot };
+    }
+    var n = Math.ceil(range / 0.1), j, k;
+    for (j = -n; j <= n; j++) for (k = -n; k <= n; k++) tryAt(t0.dx + j * 0.1 * sq, t0.dy + k * 0.1 * sq, t0.rot);
+    var DEG = Math.PI / 180;
+    function shifts(n, step) { var cx = best.dx, cy = best.dy, cr = best.rot; for (var a = -n; a <= n; a++) for (var b = -n; b <= n; b++) if (a || b) tryAt(cx + a * step * sq, cy + b * step * sq, cr); }
+    function turns(list) { var bx = best.dx, by = best.dy, r0 = best.rot; list.forEach(function (a) { tryAt(bx, by, r0 + a * DEG); }); }
+    turns([-3, -2.5, -2, -1.5, -1, -0.5, 0.5, 1, 1.5, 2, 2.5, 3]);
+    shifts(2, 0.035);
+    turns([-0.375, -0.25, -0.125, 0.125, 0.25, 0.375]);
+    shifts(1, 0.02);
+    var F = sampleSquares(img, H, best.dx, best.dy, best.rot);
+    var d = diffFeatures(ref, F);
+    return { dx: best.dx, dy: best.dy, rot: best.rot, feats: F, d: d, cost: robustCost(d) };
+  }
+
+  // Corners after a camera motion (so the motion can be folded into the stored corners).
+  function moveCorners(corners, t) {
+    var c = boardCenter(boardH(corners));
+    return corners.map(function (p) { return warp(p[0], p[1], t, c); });
   }
 
   // Typical square size in pixels (for scaling the registration search).
@@ -561,7 +619,7 @@ var Vision = (function () {
     G: G, solveHomography: solveHomography, applyH: applyH, boardH: boardH, orderClockwise: orderClockwise,
     rotateCorners: rotateCorners, sampleSquares: sampleSquares, diffFeatures: diffFeatures, register: register,
     detectOrientation: detectOrientation, zScores: zScores, scoreHypotheses: scoreHypotheses, rectify: rectify,
-    newLean: newLean, learnLean: learnLean,
+    newLean: newLean, learnLean: learnLean, track: track, moveCorners: moveCorners, squarePx: squarePx,
     params: function () { return { ZCAP: ZCAP, K: K }; }
   };
 })();
@@ -575,16 +633,16 @@ var Vision = (function () {
     return;
   }
   var V = Vision;
-  var STORE = 'boardscan.v2';
+  var STORE = 'boardscan.v3';
   var CDN = 'https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/';
   var TICK = window.BOARDSCAN_TICK || 300;   // ms between camera checks
-  var QUIET_TICKS = 3;                        // still frames needed before a read (about 1 s)
+  var QUIET_TICKS = 4;                        // still frames needed before a read (about 1.2 s)
   var START_BOARD = 'rnbqkbnrpppppppp' + '................................' + 'PPPPPPPPRNBQKBNR';
   var PN = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------- state ----------
-  var S = { phase: 'setup', side: 'w', think: 3000, voice: 'on', say: 'on', moves: [], corners: null, ref: null, lean: V.newLean() };
+  var S = { phase: 'setup', side: 'w', think: 3000, voice: 'on', say: 'on', zoom: 1, moves: [], corners: null, ref: null, lean: V.newLean() };
   var game = new Chess();
   var last = null;
   var tap = { on: false, sel: null, fixing: false };
@@ -660,7 +718,7 @@ var Vision = (function () {
   function save() {
     try {
       localStorage.setItem(STORE, JSON.stringify({
-        phase: S.phase, side: S.side, think: S.think, voice: S.voice, say: S.say, moves: S.moves, corners: S.corners, lean: S.lean,
+        phase: S.phase, side: S.side, think: S.think, voice: S.voice, say: S.say, zoom: S.zoom, moves: S.moves, corners: S.corners, lean: S.lean,
         ref: S.ref ? { board: S.ref.board, feats: b64(S.ref.feats) } : null
       }));
     } catch (e) { /* no storage */ }
@@ -669,7 +727,7 @@ var Vision = (function () {
     try {
       var o = JSON.parse(localStorage.getItem(STORE) || 'null');
       if (!o) return;
-      S.side = o.side || 'w'; S.think = o.think || 3000; S.voice = o.voice || 'on'; S.say = o.say || 'on';
+      S.side = o.side || 'w'; S.think = o.think || 3000; S.voice = o.voice || 'on'; S.say = o.say || 'on'; S.zoom = o.zoom || 1;
       if (o.lean && o.lean.w) S.lean = o.lean;
       S.corners = o.corners || null;
       if (o.phase === 'play' && o.ref && o.corners) {
@@ -760,19 +818,22 @@ var Vision = (function () {
   }
 
   // ---------- camera ----------
-  var cam = { stream: null, video: $('video'), canvas: document.createElement('canvas'), on: false, paused: false, timer: null };
-  var watch = { prev: null, quiet: 0, motion: false, attempts: 0, lastTop: null, sinceCheck: 0, busy: false, state: 'off' };
+  var cam = { stream: null, track: null, video: $('video'), canvas: document.createElement('canvas'), on: false, paused: false, timer: null };
+  var zoom = { hw: false, min: 1, max: 4, step: 0.1, cur: 1 };
+  var NO_MOTION = { dx: 0, dy: 0, rot: 0 };
+  var watch = { prev: null, quiet: 0, motion: false, attempts: 0, lastTop: null, sinceCheck: 0, busy: false, state: 'off', t: NO_MOTION, lost: 0 };
 
   function setStatus(s, text) { var el = $('status'); el.dataset.s = s; $('statusText').textContent = text; watch.state = s; }
 
   function grabFrame(copy) {
     var v = cam.video, vw = v.videoWidth, vh = v.videoHeight;
     if (!vw || !vh) return null;
-    var sc = Math.min(1, 960 / Math.max(vw, vh)), w = Math.round(vw * sc), h = Math.round(vh * sc);
+    var dz = zoom.hw ? 1 : zoom.cur, cw = vw / dz, ch = vh / dz;   // digital zoom = centre crop
+    var sc = Math.min(1, 1280 / Math.max(cw, ch)), w = Math.round(cw * sc), h = Math.round(ch * sc);
     var c = copy ? document.createElement('canvas') : cam.canvas;
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     var ctx = c.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(v, 0, 0, w, h);
+    ctx.drawImage(v, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, w, h);
     return { canvas: c, img: ctx.getImageData(0, 0, w, h) };
   }
 
@@ -784,8 +845,10 @@ var Vision = (function () {
     }
     speak('Camera on.');
     setStatus('move', 'Starting camera');
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }).then(function (stream) {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, zoom: true }, audio: false }).then(function (stream) {
       cam.stream = stream; cam.video.srcObject = stream;
+      cam.track = stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+      setupZoom();
       var p = cam.video.play(); if (p && p.catch) p.catch(function () {});
       cam.on = true; $('camOff').hidden = true;
       wake();
@@ -798,6 +861,38 @@ var Vision = (function () {
       toast(err && err.name === 'NotAllowedError' ? 'Camera permission was refused. Allow it in the browser settings for this site.' : 'Could not start the camera.');
     });
   }
+
+  // ---------- zoom ----------
+  function setupZoom() {
+    var caps = {}, set = {};
+    try { caps = cam.track && cam.track.getCapabilities ? cam.track.getCapabilities() : {}; set = cam.track && cam.track.getSettings ? cam.track.getSettings() : {}; } catch (e) { /* no capabilities */ }
+    if (caps.zoom && 'zoom' in set && caps.zoom.max > caps.zoom.min) {
+      zoom.hw = true; zoom.min = caps.zoom.min; zoom.max = Math.min(caps.zoom.max, 10); zoom.step = caps.zoom.step || 0.1;
+    } else { zoom.hw = false; zoom.min = 1; zoom.max = 4; zoom.step = 0.1; }
+    var z = $('zoom'); z.min = zoom.min; z.max = zoom.max; z.step = zoom.step;
+    $('zoomRow').hidden = false;
+    applyZoom(S.zoom, true);
+  }
+  function applyZoom(v, initial) {
+    v = Math.max(zoom.min, Math.min(zoom.max, +v || 1));
+    var z0 = zoom.cur || 1;
+    // keep the marked corners on the same squares: zoom is a crop around the centre
+    if (!initial && S.corners && v !== z0) S.corners = S.corners.map(function (u) { return [0.5 + (u[0] - 0.5) * v / z0, 0.5 + (u[1] - 0.5) * v / z0]; });
+    zoom.cur = v; S.zoom = v;
+    if (zoom.hw) {
+      cam.video.style.transform = '';
+      try {
+        cam.track.applyConstraints({ advanced: [{ zoom: v }] }).catch(function () {
+          zoom.hw = false; zoom.min = 1; zoom.max = 4; applyZoom(Math.min(v, 4), true);
+        });
+      } catch (e) { zoom.hw = false; }
+    }
+    if (!zoom.hw) cam.video.style.transform = v > 1 ? 'scale(' + v + ')' : '';
+    $('zoom').value = v; $('zoomVal').textContent = v.toFixed(1) + '×';
+    watch.prev = null; watch.t = NO_MOTION;
+    save();
+  }
+  $('zoom').addEventListener('input', function (e) { applyZoom(e.target.value, false); });
 
   function loop() {
     clearTimeout(cam.timer);
@@ -813,16 +908,26 @@ var Vision = (function () {
     drawPreview(fr);
     if (S.phase !== 'play' || !S.ref || !S.corners || cam.paused || watch.busy || overlayVisible() || tap.fixing || (last && last.mode === 'ask')) return;
     var H = V.boardH(toPx(S.corners, fr));
-    var F = V.sampleSquares(fr.img, H);
-    var moving = false;
+    // follow the camera if the phone sways, so only real changes on the board count as movement
+    var tr = V.track(fr.img, H, S.ref.feats, watch.t, 0.6);
+    if (tr.cost > 35) {
+      watch.t = NO_MOTION; watch.prev = null; watch.quiet = 0;
+      if (++watch.lost >= 3 && watch.state !== 'block') setStatus('block', 'Board not in view');
+      return;
+    }
+    watch.lost = 0;
+    watch.t = { dx: tr.dx, dy: tr.dy, rot: tr.rot };
+    var F = tr.feats, moving = false;
     if (watch.prev) {
       var d = V.diffFeatures(watch.prev, F), sorted = Array.prototype.slice.call(d).sort(function (a, b) { return a - b; });
-      var med = sorted[32];
-      for (var i = 0; i < 64; i++) if (d[i] > med + 10) { moving = true; break; }
+      var med = sorted[32], mad = Array.prototype.map.call(d, function (v) { return Math.abs(v - med); }).sort(function (a, b) { return a - b; })[32];
+      var thr = med + Math.max(20, 6 * mad), count = 0;
+      for (var i = 0; i < 64; i++) if (d[i] > thr) count++;
+      moving = count >= 2;
     }
     watch.prev = F;
     if (moving) {
-      watch.quiet = 0; watch.motion = true;
+      watch.quiet = 0; watch.motion = true; watch.confirm = null;
       if (watch.state !== 'move') setStatus('move', 'Movement');
       return;
     }
@@ -830,11 +935,11 @@ var Vision = (function () {
     // safety net: every few seconds, check for a change we did not see happen
     if (!watch.motion && ++watch.sinceCheck >= 12) {
       watch.sinceCheck = 0;
-      var dr = V.diffFeatures(S.ref.feats, F), mx = 0, sr = Array.prototype.slice.call(dr).sort(function (a, b) { return a - b; });
+      var dr = tr.d, mx = 0, sr = Array.prototype.slice.call(dr).sort(function (a, b) { return a - b; });
       for (var k = 0; k < 64; k++) mx = Math.max(mx, dr[k] - sr[32]);
       if (mx > 20) watch.motion = true;
     }
-    if (watch.motion && watch.quiet >= QUIET_TICKS) {
+    if (watch.motion && watch.quiet >= (watch.confirm ? 2 : QUIET_TICKS)) {
       watch.quiet = 0;
       evaluate(fr);
     } else if (!watch.motion && watch.state !== 'watch') setStatus('watch', 'Watching');
@@ -851,7 +956,7 @@ var Vision = (function () {
     if (!S.corners || S.phase !== 'play') return;
     var fw = fr.img.width, fh = fr.img.height, sc = Math.min(bw / fw, bh / fh), ox = (bw - fw * sc) / 2, oy = (bh - fh * sc) / 2;
     ctx.setTransform(dpr * sc, 0, 0, dpr * sc, dpr * ox, dpr * oy);
-    var H = V.boardH(toPx(S.corners, fr));
+    var H = V.boardH(V.moveCorners(toPx(S.corners, fr), watch.t));
     ctx.strokeStyle = 'rgba(214,164,70,0.8)'; ctx.lineWidth = 1.5 / sc;
     ctx.beginPath();
     for (var i = 0; i <= 8; i++) {
@@ -887,14 +992,19 @@ var Vision = (function () {
   }
 
   function read(photo) {
-    var corners = toPx(S.corners, photo);
-    var reg = V.register(photo.img, V.boardH(corners), S.ref.feats, 0, 0);
+    var corners = toPx(S.corners, photo), H = V.boardH(corners);
+    var tr = V.track(photo.img, H, S.ref.feats, watch.t, 0.6);
+    var reg = V.register(photo.img, H, S.ref.feats, tr.dx, tr.dy, tr.rot, true);
     var res = V.scoreHypotheses(reg.d, S.ref.board, buildHyps(), S.lean);
     var ranked = res.ranked.slice(0, 6), best = ranked[0];
     var strong = 0; for (var s = 0; s < 64; s++) if (res.z[s] > 0.5) strong++;
+    // changes the best move cannot explain (not on or next to a square it changes) mean a hand or object is in the way
+    var near = {}, med = Array.prototype.slice.call(reg.d).sort(function (a, b) { return a - b; })[32], stray = 0;
+    best.changed.forEach(function (c) { for (var df = -1; df <= 1; df++) for (var dr = -1; dr <= 1; dr++) { var f = c % 8 + df, rr = (c >> 3) + dr; if (f >= 0 && f < 8 && rr >= 0 && rr < 8) near[rr * 8 + f] = 1; } });
+    for (var q = 0; q < 64; q++) if (!near[q] && res.z[q] > 0.5 && reg.d[q] - med > 15) stray++;
     return {
-      reg: reg, res: ranked, z: res.z, best: best, margin: best.score - (ranked[1] ? ranked[1].score : -1), strong: strong,
-      corners: corners.map(function (q) { return [q[0] + reg.dx, q[1] + reg.dy]; })
+      reg: reg, res: ranked, z: res.z, best: best, margin: best.score - (ranked[1] ? ranked[1].score : -1), strong: strong, stray: stray,
+      corners: V.moveCorners(corners, reg)
     };
   }
 
@@ -911,33 +1021,41 @@ var Vision = (function () {
     var photo = grabFrame(true) || fr;
     var r = read(photo);
     watch.busy = false;
-    if (r.strong > 8) {                 // a hand or something else is still over the board
+    if (window.BOARDSCAN_DEBUG) window.BOARDSCAN_DEBUG(r, photo);
+    if (r.strong > 8 || r.stray >= 2) { // a hand or something else is still over the board
+      watch.confirm = null;
       setStatus('block', 'Something is covering the board');
       return;
     }
     if (!r.best.moves.length) {         // nothing moved
-      watch.motion = false; watch.attempts = 0;
+      watch.motion = false; watch.attempts = 0; watch.confirm = null;
       var second = r.res[1] ? r.res[1].score : -1;
-      if (second < 0.2) { S.ref = { feats: r.reg.feats, board: S.ref.board }; S.corners = toNorm(r.corners, photo); save(); }
+      if (second < 0.2) { S.ref = { feats: r.reg.feats, board: S.ref.board }; S.corners = toNorm(r.corners, photo); watch.t = NO_MOTION; save(); }
       setStatus('watch', 'Watching');
       return;
     }
     var key = r.best.board;
     var sure = r.best.score >= 0.8 && r.margin >= 0.45;
     var settled = !sure && watch.attempts >= 2 && watch.lastTop === key && r.margin >= 0.2;
+    if (sure && watch.confirm !== key) {   // read it once more from a fresh frame before trusting it
+      watch.confirm = key; watch.lastTop = key;
+      setStatus('read', 'Double-checking');
+      return;
+    }
     if (sure || settled) {
-      watch.motion = false; watch.attempts = 0; watch.lastTop = null;
+      watch.motion = false; watch.attempts = 0; watch.lastTop = null; watch.confirm = null;
       last = makeLast(photo, r, 'auto');
-      S.corners = toNorm(r.corners, photo);
+      S.corners = toNorm(r.corners, photo); watch.t = NO_MOTION;
       applyCandidate(0, true);
       return;
     }
+    watch.confirm = null;
     watch.attempts = watch.lastTop === key ? watch.attempts + 1 : 1;
     watch.lastTop = key;
     if (watch.attempts >= 3) {
       watch.motion = false; watch.attempts = 0; watch.lastTop = null;
       last = makeLast(photo, r, 'ask');
-      S.corners = toNorm(r.corners, photo);
+      S.corners = toNorm(r.corners, photo); watch.t = NO_MOTION;
       setStatus('ask', 'Not sure: pick the move on screen');
       speak('Not sure about the last move. Check the screen.');
       save(); renderAll();
@@ -1148,7 +1266,7 @@ var Vision = (function () {
       var snap = last, photo = last.photo;
       openEditor(photo, snap.corners, true, function (pts) {
         last = snap; restorePre(); last = null;
-        S.corners = toNorm(pts, photo); save();
+        S.corners = toNorm(pts, photo); watch.t = NO_MOTION; save();
         watch.motion = true; watch.quiet = 0; watch.prev = null;
         renderAll();
       });
@@ -1203,7 +1321,7 @@ var Vision = (function () {
   });
   $('btnCorners').addEventListener('click', function () {
     var fr = grabFrame(true); if (!fr) return;
-    openEditor(fr, toPx(S.corners, fr), true, function (pts) { S.corners = toNorm(pts, fr); save(); watch.prev = null; watch.motion = true; renderAll(); });
+    openEditor(fr, V.moveCorners(toPx(S.corners, fr), watch.t), true, function (pts) { S.corners = toNorm(pts, fr); watch.t = NO_MOTION; save(); watch.prev = null; watch.motion = true; renderAll(); });
   });
 
   // ---------- main buttons + settings ----------
@@ -1371,7 +1489,7 @@ var Vision = (function () {
     S.ref = { feats: V.sampleSquares(or.photo.img, V.boardH(corners)), board: START_BOARD };
     S.moves = []; game = new Chess(); S.lean = V.newLean(); S.phase = 'play'; last = null;
     announcedFen = null; pendingSay = '';
-    watch.prev = null; watch.motion = false; watch.quiet = 0; watch.attempts = 0;
+    watch.prev = null; watch.motion = false; watch.quiet = 0; watch.attempts = 0; watch.t = NO_MOTION;
     closeOverlays();
     setStatus('watch', 'Watching');
     if (S.side === 'b') speak('Board locked. Waiting for White.');
