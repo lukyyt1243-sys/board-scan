@@ -1,0 +1,1896 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Board Scan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one column instrument panel. Readout (the move to play) on top, board below,
+   scoresheet and settings after. Tournament vinyl board colours, brass for the one thing to act on. */
+:root {
+  --bg: #0e1311;
+  --panel: #161d19;
+  --panel-2: #1e2722;
+  --line: #2c3731;
+  --ink: #e6ece7;
+  --muted: #8d9e95;
+  --brass: #d6a446;
+  --brass-ink: #1b1407;
+  --sq-light: #e3ddc2;
+  --sq-dark: #5e8a59;
+  --pc-w: #f7f4ec;
+  --pc-w-ink: #1a1f1c;
+  --pc-b: #1a1f1c;
+  --pc-b-ink: #f2efe6;
+  --mark: rgba(214, 164, 70, 0.45);
+  --good: #7fc78c;
+  --warn: #e3b14c;
+  --bad: #e47a63;
+  --font-display: 'Big Shoulders Display', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --r: 10px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #edf1ec; --panel: #ffffff; --panel-2: #f3f6f2; --line: #d3dbd4; --ink: #141a16; --muted: #56665d;
+    --brass: #94650a; --brass-ink: #fffaf0; --mark: rgba(148, 101, 10, 0.32);
+    --good: #2f8a45; --warn: #9a6a00; --bad: #b5432c; color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #edf1ec; --panel: #ffffff; --panel-2: #f3f6f2; --line: #d3dbd4; --ink: #141a16; --muted: #56665d;
+  --brass: #94650a; --brass-ink: #fffaf0; --mark: rgba(148, 101, 10, 0.32);
+  --good: #2f8a45; --warn: #9a6a00; --bad: #b5432c; color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #0e1311; --panel: #161d19; --panel-2: #1e2722; --line: #2c3731; --ink: #e6ece7; --muted: #8d9e95;
+  --brass: #d6a446; --brass-ink: #1b1407; --mark: rgba(214, 164, 70, 0.45);
+  --good: #7fc78c; --warn: #e3b14c; --bad: #e47a63; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--ink); }
+body { font: 15px/1.5 var(--font-body); }
+.wrap {
+  max-width: 560px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 40px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible, .sq:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { font: 800 26px/1 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; margin: 0; }
+.chip {
+  font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase;
+  border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+}
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.chip[data-s="ready"]::before { background: var(--good); }
+.chip[data-s="busy"]::before { background: var(--warn); animation: pulse 1s infinite; }
+.chip[data-s="error"]::before { background: var(--bad); }
+@keyframes pulse { 50% { opacity: 0.3; } }
+
+.eyebrow { font: 500 11px/1 var(--font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0; }
+
+/* readout */
+.readout { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 6px; }
+.big { font: 800 clamp(64px, 21vw, 112px)/0.9 var(--font-display); letter-spacing: 0.005em; margin: 4px 0 2px; text-wrap: balance; overflow-wrap: anywhere; }
+.big.waiting { color: var(--muted); font-size: clamp(44px, 13vw, 72px); }
+.sub { font: 400 14px/1.4 var(--font-mono); color: var(--muted); margin: 0; font-variant-numeric: tabular-nums; }
+.sub b { color: var(--ink); font-weight: 600; }
+.steps { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.steps li::marker { font-family: var(--font-mono); color: var(--brass); }
+
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn {
+  border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 10px 14px; cursor: pointer;
+  font-weight: 500; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn:hover { border-color: var(--muted); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.primary { background: var(--brass); color: var(--brass-ink); border-color: transparent; font-weight: 600; }
+.btn.wide { flex: 1 1 220px; min-height: 54px; font-size: 17px; }
+.btn.small { min-height: 36px; padding: 6px 11px; font-size: 14px; }
+.btn.on { border-color: var(--brass); color: var(--brass); }
+.hint { color: var(--muted); font-size: 13.5px; margin: 0; }
+
+/* scan result */
+.result { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: grid; grid-template-columns: 120px 1fr; gap: 14px; align-items: start; }
+.result[data-tone="ask"] { border-color: var(--warn); }
+.result[data-tone="bad"] { border-color: var(--bad); }
+.result canvas { width: 120px; height: 120px; border-radius: 6px; display: block; background: var(--panel-2); }
+.result .body { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.result h3 { margin: 0; font: 700 22px/1.1 var(--font-display); letter-spacing: 0.01em; }
+.cands { display: flex; flex-wrap: wrap; gap: 8px; }
+.cand { font-family: var(--font-mono); }
+.cand.first { border-color: var(--brass); }
+@media (max-width: 380px) { .result { grid-template-columns: 1fr; } .result canvas { width: 100%; height: auto; aspect-ratio: 1; max-width: 220px; } }
+
+/* board */
+.boardbox { position: relative; width: 100%; max-width: 520px; align-self: center; }
+#board { width: 100%; height: auto; display: block; border-radius: 6px; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.tapbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--panel-2); border: 1px dashed var(--brass); border-radius: 8px; padding: 8px 10px 8px 14px; }
+.tapbar p { margin: 0; font-size: 14px; }
+
+/* board drawing (100 units per square) */
+#board .sq-l { fill: var(--sq-light); }
+#board .sq-d { fill: var(--sq-dark); }
+#board .mk { fill: var(--mark); }
+#board .selq { fill: none; stroke: var(--brass); stroke-width: 7; }
+#board .co { font: 600 19px var(--font-mono); }
+#board .co-l { fill: var(--sq-dark); }
+#board .co-d { fill: var(--sq-light); }
+#board .pw { fill: var(--pc-w); stroke: rgba(0, 0, 0, 0.38); stroke-width: 3; }
+#board .pb { fill: var(--pc-b); stroke: rgba(255, 255, 255, 0.2); stroke-width: 3; }
+#board .pl { font: 800 44px var(--font-display); }
+#board .pwt { fill: var(--pc-w-ink); stroke: none; }
+#board .pbt { fill: var(--pc-b-ink); stroke: none; }
+#board .tg { fill: var(--brass); opacity: 0.85; }
+#board .arrow { stroke: var(--brass); stroke-width: 15; stroke-linecap: round; opacity: 0.92; }
+#board .arrow.live { opacity: 0.6; stroke-dasharray: 28 18; }
+#board .arrowhead { fill: var(--brass); }
+
+/* live camera */
+.ver { font: 500 12px/1 var(--font-mono); letter-spacing: 0.08em; color: var(--muted); vertical-align: middle; }
+.cam { display: flex; flex-direction: column; gap: 8px; }
+.camview { position: relative; width: 100%; aspect-ratio: 4 / 3; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; display: grid; place-items: center; }
+.camview video, .camview canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.camoff { color: var(--muted); font: 500 12px var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; margin: 0; }
+.zoomrow { display: grid; grid-template-columns: auto 1fr 3.2em; align-items: center; gap: 12px; font: 500 12px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.zoomrow input { width: 100%; accent-color: var(--brass); min-height: 32px; }
+.zoomrow output { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+.status { margin: 0; display: flex; align-items: center; gap: 8px; font: 500 12px/1.2 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.status[data-s="watch"] .dot { background: var(--good); }
+.status[data-s="move"] .dot { background: var(--warn); }
+.status[data-s="read"] .dot { background: var(--brass); animation: pulse 1s infinite; }
+.status[data-s="block"] .dot, .status[data-s="ask"] .dot { background: var(--bad); }
+@media (prefers-reduced-motion: reduce) { .status .dot { animation: none !important; } }
+
+.mic { margin: 0; font: 400 12px/1.3 var(--font-mono); color: var(--muted); overflow-wrap: anywhere; }
+.mic::before { content: "MIC  "; color: var(--brass); font-weight: 600; letter-spacing: 0.08em; }
+.cand .num { display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--brass); color: var(--brass-ink); font: 600 12px/1 var(--font-mono); }
+.seg { flex-wrap: wrap; max-width: 100%; }
+.row > span { min-width: 0; }
+
+/* scoresheet */
+.sheet { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; }
+.sheet ol { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 18px; font: 400 14px/1.7 var(--font-mono); font-variant-numeric: tabular-nums; }
+.sheet li { display: grid; grid-template-columns: 2.4em 1fr 1fr; gap: 6px; }
+.sheet li span:first-child { color: var(--muted); }
+.sheet .cur { color: var(--brass); font-weight: 600; }
+.sheet .empty { color: var(--muted); font-size: 14px; margin: 8px 0 0; }
+
+/* settings */
+.settings { display: flex; flex-direction: column; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 8px 12px; min-height: 38px; cursor: pointer; font-size: 14px; }
+.seg button[aria-pressed="true"] { background: var(--brass); color: var(--brass-ink); font-weight: 600; }
+.fen { font: 400 12px/1.4 var(--font-mono); color: var(--muted); overflow-wrap: anywhere; margin: 0; user-select: all; }
+.foot { color: var(--muted); font-size: 12.5px; margin: 0; }
+
+/* full-screen editors */
+.overlay {
+  position: fixed; inset: 0; z-index: 20; background: var(--bg); display: flex; flex-direction: column; gap: 10px;
+  padding-top: max(12px, env(safe-area-inset-top, 0px)); padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.overlay h2 { margin: 0; font: 800 24px/1.1 var(--font-display); text-transform: uppercase; letter-spacing: 0.02em; }
+.stage { position: relative; flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+#edCanvas { display: block; touch-action: none; max-width: 100%; max-height: 100%; border-radius: 4px; }
+#loupe { position: absolute; top: 8px; width: 132px; height: 132px; border-radius: 50%; border: 2px solid var(--brass); background: #000; pointer-events: none; }
+#orCanvas { width: min(100%, 60vh, 420px); height: auto; aspect-ratio: 1; border-radius: 6px; display: block; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; z-index: 30; max-width: calc(100% - 32px); }
+.busy { position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 70%, transparent); font: 500 14px var(--font-mono); letter-spacing: 0.06em; }
+@media (prefers-reduced-motion: reduce) { .chip::before { animation: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <h1 class="brand">Board Scan <span class="ver">v4</span></h1>
+    <span class="chip" id="engineChip" data-s="load">Engine loading</span>
+  </header>
+
+  <section class="cam">
+    <div class="camview" id="camView"><video id="video" playsinline muted autoplay></video><canvas id="camOverlay"></canvas><p class="camoff" id="camOff">Camera is off</p></div>
+    <div class="zoomrow" id="zoomRow" hidden><label for="zoom">Zoom</label><input type="range" id="zoom" min="1" max="4" step="0.1" value="1"><output id="zoomVal" for="zoom">1.0×</output></div>
+    <p class="status" id="status" data-s="off"><span class="dot"></span><span id="statusText">Camera off</span></p>
+    <p class="mic" id="micState" hidden></p>
+  </section>
+
+  <section class="readout" id="readout" aria-live="polite"></section>
+
+  <div class="actions" id="mainActions"></div>
+  <p class="hint" id="actionHint"></p>
+
+  <section class="result" id="result" hidden></section>
+
+  <div class="tapbar" id="tapbar" hidden>
+    <p id="tapText">Tap a piece, then its square.</p>
+    <button class="btn small" id="tapDone">Done</button>
+  </div>
+
+  <div class="boardbox"><svg id="board" viewBox="0 0 800 800" role="img" aria-label="Current position"></svg></div>
+
+  <div class="actions">
+    <button class="btn small" id="btnTap">Enter a move by tapping</button>
+    <button class="btn small" id="btnBack">Take back</button>
+    <button class="btn small" id="btnCorners">Adjust corners</button>
+  </div>
+
+  <section class="sheet">
+    <p class="eyebrow">Scoresheet</p>
+    <div id="sheet"></div>
+  </section>
+
+  <section class="settings">
+    <div class="row"><span>I play</span>
+      <div class="seg" id="segSide"><button data-v="w">White</button><button data-v="b">Black</button><button data-v="both">Both sides</button></div>
+    </div>
+    <div class="row"><span>Engine level</span>
+      <div class="seg" id="segElo"><button data-v="1400">1400</button><button data-v="1600">1600</button><button data-v="1800">1800</button><button data-v="2000">2000</button><button data-v="2200">2200</button><button data-v="2500">2500</button><button data-v="max">Max</button></div>
+    </div>
+    <div class="row"><span>Engine think time</span>
+      <div class="seg" id="segThink"><button data-v="1000">1 s</button><button data-v="3000">3 s</button><button data-v="6000">6 s</button></div>
+    </div>
+    <div class="row"><span>Assume I play the move it says</span>
+      <div class="seg" id="segAssume"><button data-v="on">On</button><button data-v="off">Off</button></div>
+    </div>
+    <div class="row"><span>Spoken moves</span>
+      <div class="seg" id="segVoice"><button data-v="on">On</button><button data-v="off">Off</button></div>
+    </div>
+    <div class="row"><span>Voice commands</span>
+      <div class="seg" id="segListen"><button data-v="on">On</button><button data-v="off">Off</button></div>
+    </div>
+    <div class="row"><span>Say their move first</span>
+      <div class="seg" id="segSay"><button data-v="on">On</button><button data-v="off">Off</button></div>
+    </div>
+    <div class="row"><span>Start over</span><button class="btn small" id="btnNew">New game</button></div>
+    <p class="fen" id="fen"></p>
+  </section>
+
+  <p class="foot">Phone above the board; zoom so the board fills the picture before you lock it. A bit of sway is fine, the grid follows it. Keep this page open with the screen on. Say "repeat", "rescan", "they moved" (if it missed their move), "different move" (if you did not play what it said), "pause", "resume" or "help"; when it asks which move, say "one", "two" or "three". Engine levels are approximate (Stockfish's own Elo limiter, lowest 1320). Engine: Stockfish 17.1 lite (GPLv3), fallback Stockfish 10. Rules: chess.js (BSD).</p>
+</div>
+
+
+<div class="overlay" id="editor" hidden>
+  <div>
+    <h2 id="edTitle">Mark the corners</h2>
+    <p class="hint" id="edHint">Tap the 4 outer corners of the squares (not the wooden frame). Drag a dot to fine-tune.</p>
+  </div>
+  <div class="stage" id="edStage"><canvas id="edCanvas"></canvas><canvas id="loupe" width="264" height="264" hidden></canvas></div>
+  <div class="actions">
+    <button class="btn" id="edCancel">Cancel</button>
+    <button class="btn" id="edClear">Clear</button>
+    <button class="btn primary wide" id="edDone" disabled>Done</button>
+  </div>
+</div>
+
+<div class="overlay" id="orient" hidden>
+  <div>
+    <h2>Check the board</h2>
+    <p class="hint">White's pieces should be at the bottom, with a1 in the bottom-left corner. Rotate until it matches.</p>
+  </div>
+  <div class="stage"><canvas id="orCanvas" width="640" height="640"></canvas></div>
+  <div class="actions">
+    <button class="btn" id="orRedo">Redo corners</button>
+    <button class="btn" id="orRotate">Rotate 90°</button>
+    <button class="btn primary wide" id="orOk">Start game</button>
+  </div>
+</div>
+
+<div class="busy" id="busy" hidden>Reading the board</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script>
+/* Board Scan vision core: perspective mapping, square sampling, change detection, move matching.
+   Squares are indexed 0..63 with 0 = a8 and 63 = h1 (row-major from White's view, rank 8 first). */
+var Vision = (function () {
+  var G = 10;        // sample grid per square side
+  var MARGIN = 0.18; // skip outer part of each square
+
+  function solveHomography(src, dst) {
+    // src/dst: arrays of 4 [x,y]; returns 9-element H (h8 = 1) mapping src -> dst
+    var A = [], b = [];
+    for (var i = 0; i < 4; i++) {
+      var x = src[i][0], y = src[i][1], X = dst[i][0], Y = dst[i][1];
+      A.push([x, y, 1, 0, 0, 0, -x * X, -y * X]); b.push(X);
+      A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]); b.push(Y);
+    }
+    var n = 8;
+    for (var c = 0; c < n; c++) {
+      var p = c;
+      for (var r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+      var t = A[c]; A[c] = A[p]; A[p] = t; t = b[c]; b[c] = b[p]; b[p] = t;
+      var piv = A[c][c];
+      if (Math.abs(piv) < 1e-12) return null;
+      for (var r2 = c + 1; r2 < n; r2++) {
+        var f = A[r2][c] / piv;
+        if (!f) continue;
+        for (var k = c; k < n; k++) A[r2][k] -= f * A[c][k];
+        b[r2] -= f * b[c];
+      }
+    }
+    var h = new Array(8);
+    for (var i2 = n - 1; i2 >= 0; i2--) {
+      var s = b[i2];
+      for (var k2 = i2 + 1; k2 < n; k2++) s -= A[i2][k2] * h[k2];
+      h[i2] = s / A[i2][i2];
+    }
+    return [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+  }
+
+  function applyH(H, x, y) {
+    var w = H[6] * x + H[7] * y + H[8];
+    return [(H[0] * x + H[1] * y + H[2]) / w, (H[3] * x + H[4] * y + H[5]) / w];
+  }
+
+  // corners: [a8, h8, h1, a1] in image px -> H from board coords (0..8, 0..8) to image
+  function boardH(corners) {
+    return solveHomography([[0, 0], [8, 0], [8, 8], [0, 8]], corners);
+  }
+
+  function orderClockwise(pts) {
+    var cx = 0, cy = 0;
+    pts.forEach(function (p) { cx += p[0] / pts.length; cy += p[1] / pts.length; });
+    var s = pts.slice().sort(function (a, b) {
+      return Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx);
+    });
+    var start = 0, best = Infinity;
+    s.forEach(function (p, i) { if (p[0] + p[1] < best) { best = p[0] + p[1]; start = i; } });
+    return s.slice(start).concat(s.slice(0, start));
+  }
+
+  function rotateCorners(cw, r) {
+    return [cw[r % 4], cw[(r + 1) % 4], cw[(r + 2) % 4], cw[(r + 3) % 4]];
+  }
+
+  function sampleRGB(img, x, y, out, o) {
+    var W = img.width, Hh = img.height, d = img.data;
+    if (!(x >= 0 && y >= 0 && x <= W - 1.001 && y <= Hh - 1.001)) { out[o] = out[o + 1] = out[o + 2] = 0; return; }
+    var x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0;
+    var i00 = (y0 * W + x0) * 4, i10 = i00 + 4, i01 = i00 + W * 4, i11 = i01 + 4;
+    for (var c = 0; c < 3; c++) {
+      var a = d[i00 + c] + (d[i10 + c] - d[i00 + c]) * fx;
+      var b = d[i01 + c] + (d[i11 + c] - d[i01 + c]) * fx;
+      out[o + c] = a + (b - a) * fy;
+    }
+  }
+
+  var DIFF_TOP = 0;   // 0 = mean change over the square; e.g. 0.4 = mean of the 40% most-changed samples
+  var ALL = [], SUB = [];
+  function buildCells() {
+    ALL = []; SUB = [];
+    var pickIdx = [Math.round(G * 0.1), Math.round(G * 0.5), Math.floor(G * 0.85)];
+    for (var c0 = 0; c0 < G * G; c0++) {
+      ALL.push(c0);
+      if (pickIdx.indexOf(c0 % G) >= 0 && pickIdx.indexOf((c0 / G) | 0) >= 0) SUB.push(c0);
+    }
+  }
+  buildCells();
+
+  function boardCenter(H) { return applyH(H, 4, 4); }
+
+  // Move an image point by a small camera motion: rotation about the board centre, then a shift (pixels).
+  function warp(x, y, t, c) {
+    var r = t.rot || 0, k = t.sc || 1;
+    if (r || k !== 1) { var cs = Math.cos(r) * k, sn = Math.sin(r) * k, ux = x - c[0], uy = y - c[1]; x = c[0] + cs * ux - sn * uy; y = c[1] + sn * ux + cs * uy; }
+    return [x + (t.dx || 0), y + (t.dy || 0)];
+  }
+
+  // Sample the inner area of every square. dx/dy/rot describe camera motion since the reference (registration).
+  // cells: optional subset of the G x G sample grid (used for fast tracking).
+  function sampleSquares(img, H, dx, dy, rot, cells, scale) {
+    var t = { dx: dx || 0, dy: dy || 0, rot: rot || 0, sc: scale || 1 }, c = boardCenter(H), moved = t.dx || t.dy || t.rot || t.sc !== 1;
+    cells = cells || ALL;
+    var n = cells.length, out = new Uint8Array(64 * n * 3), tmp = [0, 0, 0], span = 1 - 2 * MARGIN;
+    for (var s = 0; s < 64; s++) {
+      var f = s % 8, r = (s / 8) | 0;
+      for (var k = 0; k < n; k++) {
+        var cell = cells[k], i = cell % G, j = (cell / G) | 0;
+        var p = applyH(H, f + MARGIN + span * (i + 0.5) / G, r + MARGIN + span * (j + 0.5) / G);
+        if (moved) p = warp(p[0], p[1], t, c);
+        sampleRGB(img, p[0], p[1], tmp, 0);
+        var o = (s * n + k) * 3;
+        out[o] = tmp[0]; out[o + 1] = tmp[1]; out[o + 2] = tmp[2];
+      }
+    }
+    return out;
+  }
+
+  function pick(F, cells) {
+    var n = cells.length, out = new Uint8Array(64 * n * 3), N = G * G;
+    for (var s = 0; s < 64; s++) for (var k = 0; k < n; k++) for (var c = 0; c < 3; c++) out[(s * n + k) * 3 + c] = F[(s * N + cells[k]) * 3 + c];
+    return out;
+  }
+
+  function squareMeans(F) {
+    var n = F.length / 192, m = new Float32Array(64 * 3);
+    for (var s = 0; s < 64; s++) {
+      var a = 0, b = 0, c = 0, base = s * n * 3;
+      for (var k = 0; k < n; k++) { a += F[base + k * 3]; b += F[base + k * 3 + 1]; c += F[base + k * 3 + 2]; }
+      m[s * 3] = a / n; m[s * 3 + 1] = b / n; m[s * 3 + 2] = c / n;
+    }
+    return m;
+  }
+
+  function median(arr) {
+    var s = Array.prototype.slice.call(arr).sort(function (a, b) { return a - b; });
+    var n = s.length;
+    return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+  }
+
+  // Per-square change between two sampled photos, with per-channel exposure correction.
+  function diffFeatures(prev, curr) {
+    var mp = squareMeans(prev), mc = squareMeans(curr);
+    var gain = [1, 1, 1];
+    for (var c = 0; c < 3; c++) {
+      // ratio per square; unchanged squares agree on the true exposure change, moved pieces are outliers
+      var ratios = [];
+      for (var s = 0; s < 64; s++) {
+        var a = mp[s * 3 + c], b = mc[s * 3 + c];
+        if (a > 15 && b > 15) ratios.push(a / b);
+      }
+      gain[c] = ratios.length > 8 ? Math.min(3, Math.max(0.33, median(ratios))) : 1;
+    }
+    var n = prev.length / 192, d = new Float32Array(64), per = DIFF_TOP ? new Float32Array(n) : null;
+    for (var s2 = 0; s2 < 64; s2++) {
+      var base = s2 * n * 3, sum = 0;
+      for (var k = 0; k < n; k++) {
+        var e = 0;
+        for (var c2 = 0; c2 < 3; c2++) e += Math.abs(prev[base + k * 3 + c2] - curr[base + k * 3 + c2] * gain[c2]);
+        sum += e;
+        if (per) per[k] = e;
+      }
+      if (per && n >= 20) {   // average of the most-changed part of the square (a piece covers only part of it)
+        per.sort(); var take = Math.max(1, Math.round(n * DIFF_TOP)), t = 0;
+        for (var q = n - take; q < n; q++) t += per[q];
+        d[s2] = t / (take * 3);
+      } else d[s2] = sum / (n * 3);
+    }
+    return d;
+  }
+
+  function robustCost(d) {
+    var s = Array.prototype.slice.call(d).sort(function (a, b) { return a - b; });
+    var t = 0;
+    for (var i = 0; i < 48; i++) t += s[i];
+    return t / 48;
+  }
+
+  // Fine alignment of a new frame to the reference around a starting camera motion (ox, oy, orot).
+  function register(img, H, prev, ox, oy, orot, refineRot) {
+    ox = ox || 0; oy = oy || 0; orot = orot || 0;
+    var best = { cost: Infinity, dx: ox, dy: oy, rot: orot };
+    function tryAt(dx, dy, rot) {
+      var F = sampleSquares(img, H, dx, dy, rot);
+      var d = diffFeatures(prev, F);
+      var c = robustCost(d);
+      if (c < best.cost) best = { cost: c, dx: dx, dy: dy, rot: rot, feats: F, d: d };
+    }
+    var sq = squarePx(H), step = sq * 0.07, fine = sq * 0.025, k, DEG = Math.PI / 180;
+    for (var j = -3; j <= 3; j++) for (k = -3; k <= 3; k++) tryAt(ox + j * step, oy + k * step, orot);
+    var cx = best.dx, cy = best.dy;
+    for (var j2 = -2; j2 <= 2; j2++) for (k = -2; k <= 2; k++) if (j2 || k) tryAt(cx + j2 * fine, cy + k * fine, orot);
+    best.sc = 1;
+    if (orot || refineRot) best = refine(img, H, prev, best);
+    return best;
+  }
+
+  // Polish the camera motion estimate (shift, turn and distance change together) by coordinate descent.
+  function refine(img, H, prev, best) {
+    var sq = squarePx(H), DEG = Math.PI / 180, keys = ['dx', 'dy', 'rot', 'sc'];
+    var p = { dx: best.dx, dy: best.dy, rot: best.rot, sc: best.sc || 1 }, cur = best.cost, evals = 0;
+    var steps = { dx: 0.05 * sq, dy: 0.05 * sq, rot: 0.4 * DEG, sc: 0.006 };
+    var mins = { dx: 0.006 * sq, dy: 0.006 * sq, rot: 0.04 * DEG, sc: 0.0006 };
+    function costAt(q) {
+      var F = sampleSquares(img, H, q.dx, q.dy, q.rot, null, q.sc), d = diffFeatures(prev, F), c = robustCost(d);
+      evals++;
+      if (c < best.cost) best = { cost: c, dx: q.dx, dy: q.dy, rot: q.rot, sc: q.sc, feats: F, d: d };
+      return c;
+    }
+    while (evals < 90) {
+      var improved = false;
+      keys.forEach(function (k) {
+        [1, -1].forEach(function (sign) {
+          var q = { dx: p.dx, dy: p.dy, rot: p.rot, sc: p.sc }; q[k] += sign * steps[k];
+          var c = costAt(q);
+          if (c < cur - 1e-6) { cur = c; p = q; improved = true; }
+        });
+      });
+      if (!improved) {
+        var done = true;
+        keys.forEach(function (k) { steps[k] /= 2; if (steps[k] >= mins[k]) done = false; });
+        if (done) break;
+      }
+    }
+    return best;
+  }
+
+  // Fast per-frame tracking of camera motion (a swinging phone): shift up to +-range squares and a few
+  // degrees of rotation, using a 3x3 subset of samples per square. Returns the motion, full samples and change map.
+  function track(img, H, ref, t0, range) {
+    t0 = t0 || { dx: 0, dy: 0, rot: 0 }; range = range || 0.6;
+    var sq = squarePx(H), refSub = pick(ref, SUB), best = { cost: Infinity, dx: t0.dx, dy: t0.dy, rot: t0.rot };
+    function tryAt(dx, dy, rot) {
+      var c = robustCost(diffFeatures(refSub, sampleSquares(img, H, dx, dy, rot, SUB)));
+      if (c < best.cost) best = { cost: c, dx: dx, dy: dy, rot: rot };
+    }
+    var n = Math.ceil(range / 0.1), j, k;
+    for (j = -n; j <= n; j++) for (k = -n; k <= n; k++) tryAt(t0.dx + j * 0.1 * sq, t0.dy + k * 0.1 * sq, t0.rot);
+    var DEG = Math.PI / 180;
+    function shifts(n, step) { var cx = best.dx, cy = best.dy, cr = best.rot; for (var a = -n; a <= n; a++) for (var b = -n; b <= n; b++) if (a || b) tryAt(cx + a * step * sq, cy + b * step * sq, cr); }
+    function turns(list) { var bx = best.dx, by = best.dy, r0 = best.rot; list.forEach(function (a) { tryAt(bx, by, r0 + a * DEG); }); }
+    turns([-3, -2.5, -2, -1.5, -1, -0.5, 0.5, 1, 1.5, 2, 2.5, 3]);
+    shifts(2, 0.035);
+    turns([-0.375, -0.25, -0.125, 0.125, 0.25, 0.375]);
+    shifts(1, 0.02);
+    var F = sampleSquares(img, H, best.dx, best.dy, best.rot);
+    var d = diffFeatures(ref, F);
+    return { dx: best.dx, dy: best.dy, rot: best.rot, feats: F, d: d, cost: robustCost(d) };
+  }
+
+  // Corners after a camera motion (so the motion can be folded into the stored corners).
+  function moveCorners(corners, t) {
+    var c = boardCenter(boardH(corners));
+    return corners.map(function (p) { return warp(p[0], p[1], t, c); });
+  }
+
+  // Typical square size in pixels (for scaling the registration search).
+  function squarePx(H) {
+    var a = applyH(H, 0, 4), b = applyH(H, 8, 4), c = applyH(H, 4, 0), d = applyH(H, 4, 8);
+    return (Math.hypot(b[0] - a[0], b[1] - a[1]) + Math.hypot(d[0] - c[0], d[1] - c[1])) / 16;
+  }
+
+  function squareLuma(F) {
+    var m = squareMeans(F), L = new Float32Array(64);
+    for (var s = 0; s < 64; s++) L[s] = 0.299 * m[s * 3] + 0.587 * m[s * 3 + 1] + 0.114 * m[s * 3 + 2];
+    return L;
+  }
+
+  // Starting position: White's pieces on the two bottom rows are lighter than Black's on the two top rows.
+  function detectOrientation(img, cornersCW) {
+    var scores = [];
+    for (var r = 0; r < 4; r++) {
+      var H = boardH(rotateCorners(cornersCW, r));
+      var L = squareLuma(sampleSquares(img, H));
+      var top = 0, bot = 0;
+      for (var s = 0; s < 16; s++) top += L[s];
+      for (var s2 = 48; s2 < 64; s2++) bot += L[s2];
+      scores.push((bot - top) / 16);
+    }
+    var bestR = 0;
+    for (var r2 = 1; r2 < 4; r2++) if (scores[r2] > scores[bestR]) bestR = r2;
+    var others = scores.filter(function (_, i) { return i !== bestR; });
+    return { rotation: bestR, scores: scores, margin: scores[bestR] - Math.max.apply(null, others) };
+  }
+
+  // Change strength per square, scaled so the second-strongest change is about 1.
+  // (A real move changes at least two squares; leaning pieces cause weaker "ghost" changes next to them.)
+  function zScores(d) {
+    var med = median(d);
+    var dev = Array.prototype.map.call(d, function (v) { return Math.abs(v - med); });
+    var noise = Math.max(1.4826 * median(dev), 1);
+    var ups = Array.prototype.map.call(d, function (v) { return v - med; }).sort(function (a, b) { return b - a; });
+    var strong = Math.max(ups[1], 10, 6 * noise);
+    var z = new Float32Array(64);
+    for (var s = 0; s < 64; s++) z[s] = (d[s] - med) / strong;
+    return { z: z, med: med, scale: strong, noise: noise };
+  }
+
+  var ZCAP = 1, K = 0.4;
+  var DIRS = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]; // [file step, row step]
+
+  function neighbor(s, k) {
+    var f = (s % 8) + DIRS[k][0], r = ((s / 8) | 0) + DIRS[k][1];
+    return f < 0 || f > 7 || r < 0 || r > 7 ? -1 : r * 8 + f;
+  }
+
+  function changeWeight(a, b) {
+    if (a === b) return 0;
+    var occA = a !== '.', occB = b !== '.';
+    var colorA = occA ? (a === a.toUpperCase() ? 'w' : 'b') : '', colorB = occB ? (b === b.toUpperCase() ? 'w' : 'b') : '';
+    return (occA !== occB || colorA !== colorB) ? 1 : 0.5;
+  }
+
+  // Pieces seen at an angle spill into the next square ("lean"). lean.w[k] is how strongly
+  // a change on a square shows up on its neighbour in direction k (learned from confirmed moves).
+  function newLean() { return { w: [0, 0, 0, 0, 0, 0, 0, 0], n: 0 }; }
+
+  function learnLean(lean, z, refBoard, newBoard) {
+    var sums = [0, 0, 0, 0, 0, 0, 0, 0], cnt = [0, 0, 0, 0, 0, 0, 0, 0], s, k;
+    for (s = 0; s < 64; s++) {
+      if (changeWeight(refBoard[s], newBoard[s]) < 1) continue;
+      for (k = 0; k < 8; k++) {
+        var nb = neighbor(s, k);
+        if (nb < 0 || refBoard[nb] !== newBoard[nb]) continue;
+        sums[k] += Math.max(0, Math.min(z[nb], 1)); cnt[k]++;
+      }
+    }
+    var n = Math.min(lean.n, 5), w = lean.w.slice();
+    for (k = 0; k < 8; k++) if (cnt[k]) w[k] = (w[k] * n + sums[k] / cnt[k]) / (n + 1);
+    return { w: w, n: lean.n + 1 };
+  }
+
+  // hyps: [{board: string of 64 chars ('.' empty, 'PNBRQK' white, 'pnbrqk' black), bonus}]
+  function scoreHypotheses(d, refBoard, hyps, lean, occ) {
+    var zs = zScores(d), z = zs.z;
+    var ox = null;   // occupancy evidence per square: 0 = looks empty, 1 = looks occupied, NaN = unknown
+    if (occ && occ.o) { ox = new Float32Array(64); for (var q = 0; q < 64; q++) ox[q] = isNaN(occ.o[q]) ? NaN : Math.max(0, Math.min(1, (occ.o[q] - (occ.lo || 8)) / (occ.span || 20))); }
+    var lw = (lean && lean.n >= 2) ? lean.w.map(function (v) { return v > 0.15 ? Math.min(v, 1) : 0; }) : null;
+    var ghost = new Float32Array(64);
+    var out = hyps.map(function (h) {
+      var score = h.bonus || 0, changed = [], s;
+      if (lw) ghost.fill(0);
+      for (s = 0; s < 64; s++) {
+        var e = changeWeight(refBoard[s], h.board[s]);
+        if (!e) continue;
+        score += e * (Math.min(z[s], ZCAP) - K);
+        if (ox && !isNaN(ox[s])) {
+          var wasOcc = refBoard[s] !== '.', nowOcc = h.board[s] !== '.';
+          if (wasOcc !== nowOcc) score += occ.w * (nowOcc ? 2 * ox[s] - 1 : 1 - 2 * ox[s]);
+        }
+        changed.push(s);
+        if (lw && e === 1) for (var k = 0; k < 8; k++) if (lw[k]) {
+          var nb = neighbor(s, k);
+          if (nb >= 0 && lw[k] > ghost[nb]) ghost[nb] = lw[k];
+        }
+      }
+      if (lw) for (s = 0; s < 64; s++) {
+        var g = ghost[s];
+        if (g && refBoard[s] === h.board[s]) score += g * (Math.max(-0.2, Math.min(z[s], ZCAP)) - 0.5 * g);
+      }
+      return Object.assign({}, h, { score: score, changed: changed });
+    });
+    out.sort(function (a, b) { return b.score - a.score; });
+    var seen = {}, uniq = [];
+    out.forEach(function (h) { if (!seen[h.board]) { seen[h.board] = 1; uniq.push(h); } });
+    return { ranked: uniq, z: z, med: zs.med, scale: zs.scale };
+  }
+
+  // ---- occupancy: does a square look like it did when it was known to be empty? ----
+  function illum(F, board) {   // per-channel brightness of the empty squares (robust)
+    var mm = squareMeans(F), ch = [[], [], []];
+    for (var s = 0; s < 64; s++) if (board[s] === '.') for (var c = 0; c < 3; c++) ch[c].push(mm[s * 3 + c]);
+    return ch.map(function (a) { return a.length >= 4 ? Math.max(8, median(a)) : 128; });
+  }
+  function normSquare(F, s, il) {
+    var n = F.length / 192, out = new Float32Array(n * 3);
+    for (var k = 0; k < n; k++) for (var c = 0; c < 3; c++) out[k * 3 + c] = F[(s * n + k) * 3 + c] / il[c];
+    return out;
+  }
+  function occDistance(F, T, refBoard) {
+    var il = illum(F, refBoard), n = F.length / 192, o = new Float32Array(64);
+    for (var s = 0; s < 64; s++) {
+      var t = T[s];
+      if (!t) { o[s] = NaN; continue; }
+      var sum = 0;
+      for (var k = 0; k < n; k++) for (var c = 0; c < 3; c++) sum += Math.abs(F[(s * n + k) * 3 + c] / il[c] - t[k * 3 + c]);
+      o[s] = 100 * sum / (n * 3);
+    }
+    return o;
+  }
+
+  // Full read of one frame against the reference: follow camera motion, align, score the candidate
+  // positions, and report how much change the best candidate leaves unexplained (hand still in view).
+  function readBoard(img, H, ref, refBoard, hyps, opts) {
+    opts = opts || {};
+    var tr = track(img, H, ref, opts.t0 || { dx: 0, dy: 0, rot: 0 }, opts.range || 0.6);
+    var reg = register(img, H, ref, tr.dx, tr.dy, tr.rot, true);
+    var occ = opts.occT ? { o: occDistance(opts.avgFeats || reg.feats, opts.occT, refBoard), w: opts.occW || 0.4 } : null;
+    var d = reg.d;
+    if (opts.avgFeats) d = diffFeatures(ref, opts.avgFeats);
+    var res = scoreHypotheses(d, refBoard, hyps, opts.lean, occ);
+    var ranked = res.ranked, best = ranked[0];
+    var strong = 0, s;
+    for (s = 0; s < 64; s++) if (res.z[s] > 0.5) strong++;
+    var near = {}, med = median(d), stray = 0;
+    best.changed.forEach(function (c) { for (var df = -1; df <= 1; df++) for (var dr = -1; dr <= 1; dr++) { var f = c % 8 + df, rr = (c >> 3) + dr; if (f >= 0 && f < 8 && rr >= 0 && rr < 8) near[rr * 8 + f] = 1; } });
+    for (s = 0; s < 64; s++) if (!near[s] && res.z[s] > 0.5 && d[s] - med > 15) stray++;
+    return { reg: reg, ranked: ranked, z: res.z, best: best, margin: best.score - (ranked[1] ? ranked[1].score : -1), strong: strong, stray: stray, occ: occ };
+  }
+
+  // Draw a straightened top-down copy of the board.
+  function rectify(img, H, size) {
+    var out = new Uint8ClampedArray(size * size * 4), tmp = [0, 0, 0];
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
+        var p = applyH(H, (x + 0.5) * 8 / size, (y + 0.5) * 8 / size);
+        sampleRGB(img, p[0], p[1], tmp, 0);
+        var o = (y * size + x) * 4;
+        out[o] = tmp[0]; out[o + 1] = tmp[1]; out[o + 2] = tmp[2]; out[o + 3] = 255;
+      }
+    }
+    return out;
+  }
+
+  return {
+    G: G, solveHomography: solveHomography, applyH: applyH, boardH: boardH, orderClockwise: orderClockwise,
+    rotateCorners: rotateCorners, sampleSquares: sampleSquares, diffFeatures: diffFeatures, register: register,
+    detectOrientation: detectOrientation, zScores: zScores, scoreHypotheses: scoreHypotheses, rectify: rectify,
+    newLean: newLean, learnLean: learnLean, readBoard: readBoard, illum: illum, normSquare: normSquare, occDistance: occDistance, track: track, moveCorners: moveCorners, squarePx: squarePx,
+    params: function () { return { ZCAP: ZCAP, K: K, DIFF_TOP: DIFF_TOP }; },
+    setDiffTop: function (v) { DIFF_TOP = v; },
+    setGrid: function (g, margin) { G = g; MARGIN = margin; buildCells(); },
+    setK: function (k) { K = k; }
+  };
+})();
+
+</script>
+<script>
+(function () {
+  'use strict';
+  if (typeof Chess === 'undefined') {
+    document.getElementById('readout').innerHTML = '<p class="eyebrow">Error</p><div class="big waiting">Not loaded</div><p class="sub">The chess rules library did not load. Check your connection and reload the page.</p>';
+    return;
+  }
+  var V = Vision;
+  var STORE = 'boardscan.v4';
+  var SF17 = 'https://unpkg.com/stockfish@17.1.0/src/stockfish-17.1-lite-single-03e3232';
+  var SF10 = 'https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/';
+  var TICK = window.BOARDSCAN_TICK || 300;   // ms between camera checks
+  var QUIET_TICKS = 4;                        // still frames needed before a read (about 1.2 s)
+  var OCC_WEIGHT = window.BOARDSCAN_OCC != null ? window.BOARDSCAN_OCC : 0;   // "emptied / filled" evidence (0 = off)
+  var ASSUME_REPLY_BONUS = 0;   // no head start for a reply over "only my move is on the board"
+  var START_BOARD = 'rnbqkbnrpppppppp' + '................................' + 'PPPPPPPPRNBQKBNR';
+  var PN = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+  var SKILL10 = { 1400: 3, 1600: 6, 1800: 9, 2000: 12, 2200: 14, 2500: 17, max: 20 };   // rough Elo -> Skill Level for the old engine
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- state ----------
+  var S = {
+    phase: 'setup', side: 'w', think: 3000, voice: 'on', say: 'on', listen: 'on', assume: 'on', elo: 'max', zoom: 1,
+    moves: [], corners: null, ref: null, lean: V.newLean(), assumed: null, advice: null
+  };
+  var game = new Chess();
+  var last = null;
+  var tap = { on: false, sel: null, fixing: false };
+  var resetArmed = 0;
+  var lastSpoken = '', pendingSay = '', announcedFen = null;
+  var templates = new Array(64).fill(null);   // how each square looked when it was last known empty
+  var anchor = null;                           // photo of the last confirmed position (not refreshed while nothing changes)
+  var prevRef = null;                          // the anchor from before my own move was seen (for "they moved")
+
+  // ---------- helpers ----------
+  function boardStr(g) {
+    var b = g.board(), s = '';
+    for (var r = 0; r < 8; r++) for (var f = 0; f < 8; f++) {
+      var c = b[r][f];
+      s += c ? (c.color === 'w' ? c.type.toUpperCase() : c.type) : '.';
+    }
+    return s;
+  }
+  function uci(m) { return m.from + m.to + (m.promotion || ''); }
+  function sqName(i) { return 'abcdefgh'[i % 8] + (8 - ((i / 8) | 0)); }
+  function sqIndex(n) { return (8 - +n[1]) * 8 + 'abcdefgh'.indexOf(n[0]); }
+  function mv(u) { var o = { from: u.slice(0, 2), to: u.slice(2, 4) }; if (u[4]) o.promotion = u[4]; return o; }
+  function replay(list) { var g = new Chess(); for (var i = 0; i < list.length; i++) if (!g.move(mv(list[i]))) break; return g; }
+  function toSan(fen, u) { var g = new Chess(fen), m = g.move(mv(u)); return m ? m.san : u; }
+  function numbered(fen, san) { var p = fen.split(' '); return p[5] + (p[1] === 'w' ? '. ' : '… ') + san; }
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function sideName(c) { return c === 'w' ? 'White' : 'Black'; }
+  function toast(msg) { var t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { t.hidden = true; }, 3200); }
+  function busy(on) { $('busy').hidden = !on; }
+  function assumeOn() { return S.assume === 'on' && S.side !== 'both'; }
+
+  // ---------- speaking ----------
+  function spokenSquare(s) { return s[0].toUpperCase() + ' ' + s[1]; }
+  function moveSpeech(m) {
+    var t;
+    if (m.flags.indexOf('k') >= 0) t = 'castle king side';
+    else if (m.flags.indexOf('q') >= 0) t = 'castle queen side';
+    else t = PN[m.piece] + ' ' + spokenSquare(m.from) + (m.captured ? ' takes ' : ' to ') + spokenSquare(m.to);
+    if (m.promotion) t += ', promote to ' + PN[m.promotion];
+    if (/#$/.test(m.san)) t += ', checkmate'; else if (/\+$/.test(m.san)) t += ', check';
+    return t;
+  }
+  function uciSpeech(fen, u) { var g = new Chess(fen), m = g.move(mv(u)); return m ? moveSpeech(m) : u; }
+  function speak(text, quiet) {
+    if (!quiet) lastSpoken = text;
+    if (S.voice !== 'on') return;
+    try {
+      var ss = window.speechSynthesis; if (!ss) return;
+      ss.cancel();
+      var u = new SpeechSynthesisUtterance(text.charAt(0).toUpperCase() + text.slice(1));
+      u.lang = 'en-US'; u.rate = 0.95;
+      // stop listening while talking, so the app does not hear itself
+      micHold(true);
+      var done = function () { clearTimeout(u._t); micHold(false); };
+      u.onend = done; u.onerror = done;
+      u._t = setTimeout(done, 1500 + text.length * 110);
+      ss.speak(u);
+    } catch (e) { /* speech not available */ }
+  }
+  function maybeAnnounce() {
+    if (S.phase !== 'play') return;
+    var fen = game.fen();
+    if (game.game_over()) {
+      if (announcedFen === fen) return;
+      announcedFen = fen;
+      speak((pendingSay ? pendingSay + '. ' : '') + (game.in_checkmate() ? 'Checkmate.' : 'Draw.'));
+      pendingSay = '';
+      return;
+    }
+    if (!needsSuggestion() || announcedFen === fen) return;
+    if (engine.failed) { if (pendingSay) speak(pendingSay); pendingSay = ''; announcedFen = fen; return; }
+    if (!engine.result || engine.result.fen !== fen) return;
+    announcedFen = fen;
+    var lead = S.side === 'both' ? sideName(game.turn()) + ', ' : 'Play ';
+    speak((pendingSay ? pendingSay + '. ' : '') + lead + uciSpeech(fen, engine.result.move) + '.');
+    pendingSay = '';
+    if (assumeOn() && game.turn() === S.side && S.skipAssume !== fen) applyAssumed(engine.result.move);
+  }
+
+  // The user plays what they were told: put the move on the board right away,
+  // so the camera only has to work out the opponent's reply.
+  function applyAssumed(u) {
+    var before = game.fen(), r = game.move(mv(u));
+    if (!r) return;
+    S.moves.push(uci(r));
+    S.assumed = uci(r);
+    S.advice = { before: before, after: game.fen(), san: r.san, uci: uci(r) };
+    last = null;
+    onPosition();
+  }
+
+  // ---------- listening (voice commands) ----------
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var mic = { rec: null, want: false, hold: false, restart: null, heard: '' };
+  function micStart() {
+    if (!SR) { toast('Voice commands are not supported in this browser.'); return; }
+    mic.want = true; micSpin(); renderMic();
+  }
+  function micStop() { mic.want = false; clearTimeout(mic.restart); if (mic.rec) { try { mic.rec.abort(); } catch (e) { /* ignore */ } } mic.rec = null; renderMic(); }
+  function micHold(on) {
+    mic.hold = on;
+    if (on && mic.rec) { try { mic.rec.abort(); } catch (e) { /* ignore */ } mic.rec = null; }
+    if (!on) { clearTimeout(mic.restart); mic.restart = setTimeout(micSpin, 350); }
+  }
+  function micSpin() {
+    if (!mic.want || mic.hold || mic.rec || !SR) return;
+    var r;
+    try { r = new SR(); } catch (e) { return; }
+    r.lang = 'en-US'; r.continuous = true; r.interimResults = false; r.maxAlternatives = 4;
+    r.onresult = function (e) {
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        if (!e.results[i].isFinal) continue;
+        var alts = [];
+        for (var j = 0; j < e.results[i].length; j++) alts.push(String(e.results[i][j].transcript || '').toLowerCase().trim());
+        onHeard(alts);
+      }
+    };
+    r.onerror = function (e) {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { S.listen = 'off'; save(); micStop(); toast('Microphone permission was refused, so voice commands are off.'); renderSettings(); }
+    };
+    r.onend = function () { if (mic.rec === r) mic.rec = null; clearTimeout(mic.restart); mic.restart = setTimeout(micSpin, 400); renderMic(); };
+    try { r.start(); mic.rec = r; } catch (e) { mic.rec = null; }
+    renderMic();
+  }
+  function renderMic() {
+    var el = $('micState');
+    el.hidden = !(mic.want && SR);
+    el.textContent = mic.heard ? 'Heard: ' + mic.heard : 'Listening for: repeat, rescan, they moved, different move, pause, resume, help';
+  }
+  var NUMBERS = [/^(one|1|first|won|number one)$/, /^(two|2|second|number two)$/, /^(three|3|third|tree|number three)$/, /^(four|4|fourth|number four)$/];
+  function onHeard(alts) {
+    var said = alts[0] || '';
+    for (var a = 0; a < alts.length; a++) {
+      var t = alts[a].replace(/[.,!?]/g, '').trim(), words = t.split(/\s+/);
+      if (last && last.mode === 'ask' && words.length <= 3) {
+        for (var n = 0; n < NUMBERS.length; n++) {
+          if (NUMBERS[n].test(t) || NUMBERS[n].test(words[words.length - 1])) {
+            var opts = askOptions();
+            if (opts[n] != null) { mic.heard = t; renderMic(); pickCandidate(opts[n], true); return; }
+          }
+        }
+      }
+      if (words.length > 5) continue;          // commands are short; longer speech is probably conversation
+      if (/\b(repeat|again|say that again|say again|what was that)\b/.test(t)) { mic.heard = t; renderMic(); speak(lastSpoken || 'Nothing to repeat yet.', true); return; }
+      if (/\b(rescan|re scan|re-scan|scan|read again|look again|check again)\b/.test(t)) { mic.heard = t; renderMic(); rescan(true); return; }
+      if (/\b(pause|stop watching)\b/.test(t)) { mic.heard = t; renderMic(); setPaused(true); speak('Paused.', true); return; }
+      if (/\b(resume|continue|start watching|unpause)\b/.test(t)) { mic.heard = t; renderMic(); setPaused(false); speak('Watching.', true); return; }
+      if (/\b(they moved|he moved|she moved|opponent moved|they played|he played|she played)\b/.test(t)) { mic.heard = t; renderMic(); theyMoved(true); return; }
+      if (/\b(different|something else|another move|not that move|i played)\b/.test(t)) { mic.heard = t; renderMic(); deviate(true); return; }
+      if (/\b(help|commands)\b/.test(t)) { mic.heard = t; renderMic(); speak('You can say: repeat, rescan, pause, resume, they moved if I missed their move, or different move if you did not play what I said. When I am not sure about a move, say one, two or three.', true); return; }
+    }
+    if (said) { mic.heard = said + ' (no command)'; renderMic(); }
+  }
+
+  // ---------- storage ----------
+  function b64(u8) { var s = ''; for (var i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); }
+  function unb64(t) { var s = atob(t), u = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+  function save() {
+    try {
+      localStorage.setItem(STORE, JSON.stringify({
+        phase: S.phase, side: S.side, think: S.think, voice: S.voice, say: S.say, listen: S.listen, assume: S.assume, elo: S.elo, zoom: S.zoom,
+        moves: S.moves, corners: S.corners, lean: S.lean, assumed: S.assumed, advice: S.advice,
+        ref: S.ref ? { board: S.ref.board, feats: b64(S.ref.feats) } : null
+      }));
+    } catch (e) { /* no storage */ }
+  }
+  function load() {
+    try {
+      var o = JSON.parse(localStorage.getItem(STORE) || 'null');
+      if (!o) return;
+      ['side', 'think', 'voice', 'say', 'listen', 'assume', 'elo', 'zoom'].forEach(function (k) { if (o[k] != null) S[k] = o[k]; });
+      if (o.lean && o.lean.w) S.lean = o.lean;
+      S.corners = o.corners || null;
+      if (o.phase === 'play' && o.ref && o.corners) {
+        S.phase = 'play';
+        S.ref = { board: o.ref.board, feats: unb64(o.ref.feats) };
+        game = replay(o.moves || []);
+        S.moves = game.history({ verbose: true }).map(uci);
+        S.assumed = o.assumed || null; S.advice = o.advice || null;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // ---------- engine ----------
+  var engine = { w: null, kind: '', ready: false, busy: false, want: null, job: null, seq: 0, result: null, failed: false };
+  function setChip(s, text) { var c = $('engineChip'); c.dataset.s = s; c.textContent = text; }
+  function engineFail() { engine.failed = true; engine.ready = false; setChip('error', 'Engine failed'); renderReadout(); maybeAnnounce(); }
+  function spawnEngine(url, suffix, patch, wait) {
+    return fetch(url).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(function (t) {
+      if (patch) t = patch(t);
+      var w = new Worker(URL.createObjectURL(new Blob([t], { type: 'text/javascript' })) + (suffix || ''));
+      return new Promise(function (resolve, reject) {
+        var timer = setTimeout(function () { w.terminate(); reject(new Error('timeout')); }, wait || 20000);
+        w.onerror = function () { clearTimeout(timer); w.terminate(); reject(new Error('worker error')); };
+        w.onmessage = function (e) { if (String(e.data) === 'uciok') { clearTimeout(timer); resolve(w); } };
+        w.postMessage('uci');
+      });
+    });
+  }
+  function startEngine() {
+    setChip('load', 'Engine loading');
+    var hasWasm = typeof WebAssembly === 'object';
+    var first = hasWasm ? spawnEngine(SF17 + '.js', '#' + encodeURIComponent(SF17 + '.wasm'), null, 45000).then(function (w) { engine.kind = 'sf17'; return w; }) : Promise.reject(new Error('no wasm'));
+    first.catch(function () {
+      if (!hasWasm) throw new Error('no wasm');
+      return spawnEngine(SF10 + 'stockfish.wasm.js', '', function (t) {
+        return t.replace('locateFile:function(e){return e}', 'locateFile:function(e){return ' + JSON.stringify(SF10) + '+e}');
+      }).then(function (w) { engine.kind = 'sf10'; return w; });
+    }).catch(function () {
+      return spawnEngine(SF10 + 'stockfish.js').then(function (w) { engine.kind = 'sf10'; return w; });
+    }).then(function (w) {
+      engine.w = w;
+      w.onmessage = function (e) { onLine(String(e.data)); };
+      w.onerror = engineFail;
+      onLine('uciok');
+    }).catch(engineFail);
+  }
+  function strengthCommands() {
+    if (engine.kind === 'sf17') {
+      return S.elo === 'max' ? ['setoption name UCI_LimitStrength value false'] : ['setoption name UCI_LimitStrength value true', 'setoption name UCI_Elo value ' + Math.max(1320, Math.min(3190, +S.elo))];
+    }
+    return ['setoption name Skill Level value ' + (SKILL10[S.elo] != null ? SKILL10[S.elo] : 20)];
+  }
+  function onLine(line) {
+    if (line === 'uciok') { engine.w.postMessage('setoption name Hash value 32'); engine.w.postMessage('isready'); return; }
+    if (line === 'readyok') {
+      if (!engine.ready) { engine.ready = true; setChip('ready', engine.kind === 'sf17' ? 'Stockfish 17' : 'Stockfish 10'); if (engine.want) go(); else kick(); }
+      return;
+    }
+    if (line.indexOf('info ') === 0 && engine.job) {
+      if (line.indexOf(' pv ') < 0 || / (lowerbound|upperbound)/.test(line)) return;
+      var dm = /depth (\d+)/.exec(line), cp = /score cp (-?\d+)/.exec(line), mt = /score mate (-?\d+)/.exec(line), pv = / pv (\S+)/.exec(line);
+      engine.job.info = { depth: dm ? +dm[1] : 0, cp: cp ? +cp[1] : null, mate: mt ? +mt[1] : null, move: pv[1] };
+      if (engine.job.seq === engine.seq) { setChip('busy', 'Thinking · depth ' + engine.job.info.depth); renderReadout(); renderBoard(); }
+      return;
+    }
+    if (line.indexOf('bestmove') === 0) {
+      var job = engine.job, bm = line.split(' ')[1];
+      engine.job = null; engine.busy = false;
+      if (job && job.seq === engine.seq && bm && bm !== '(none)') {
+        var info = job.info || {};
+        engine.result = { fen: job.fen, move: bm, depth: info.depth || 0, cp: info.move === bm ? info.cp : null, mate: info.move === bm ? info.mate : null };
+        renderReadout(); renderBoard(); maybeAnnounce();
+      }
+      if (engine.want) go(); else setChip('ready', engine.kind === 'sf17' ? 'Stockfish 17' : 'Stockfish 10');
+    }
+  }
+  function analyze(fen) {
+    if (engine.result && engine.result.fen === fen) { maybeAnnounce(); return; }
+    if (engine.busy && engine.job && engine.job.fen === fen && engine.job.seq === engine.seq) return;
+    engine.seq++; engine.result = null;
+    engine.want = { fen: fen, seq: engine.seq };
+    if (!engine.ready) return;
+    if (engine.busy) { engine.w.postMessage('stop'); return; }
+    go();
+  }
+  function go() {
+    var j = engine.want; engine.want = null; if (!j) return;
+    engine.job = j; engine.busy = true; j.info = null;
+    strengthCommands().forEach(function (c) { engine.w.postMessage(c); });
+    engine.w.postMessage('position fen ' + j.fen);
+    engine.w.postMessage('go movetime ' + S.think);
+    setChip('busy', 'Thinking');
+  }
+  function stopEngine() { engine.seq++; engine.want = null; engine.result = null; if (engine.busy && engine.w) engine.w.postMessage('stop'); }
+  function needsSuggestion() { return S.phase === 'play' && !game.game_over() && (S.side === 'both' || game.turn() === S.side); }
+  function kick() { if (needsSuggestion()) analyze(game.fen()); else { stopEngine(); maybeAnnounce(); } }
+  function suggestion() {
+    var fen = game.fen();
+    if (engine.result && engine.result.fen === fen) return { r: engine.result, live: false };
+    if (engine.job && engine.job.fen === fen && engine.job.seq === engine.seq && engine.job.info) return { r: engine.job.info, live: true };
+    return null;
+  }
+
+  // ---------- camera ----------
+  var cam = { stream: null, track: null, video: $('video'), canvas: document.createElement('canvas'), on: false, paused: false, timer: null };
+  var zoom = { hw: false, min: 1, max: 4, step: 0.1, cur: 1 };
+  var NO_MOTION = { dx: 0, dy: 0, rot: 0 };
+  var watch = { prev: null, quiet: 0, motion: false, attempts: 0, lastTop: null, sinceCheck: 0, busy: false, state: 'off', t: NO_MOTION, lost: 0, confirm: null, force: false, mineTries: 0 };
+
+  function setStatus(s, text) { var el = $('status'); el.dataset.s = s; $('statusText').textContent = text; watch.state = s; }
+
+  function grabFrame(copy) {
+    var v = cam.video, vw = v.videoWidth, vh = v.videoHeight;
+    if (!vw || !vh) return null;
+    var dz = zoom.hw ? 1 : zoom.cur, cw = vw / dz, ch = vh / dz;   // digital zoom = centre crop
+    var sc = Math.min(1, 1280 / Math.max(cw, ch)), w = Math.round(cw * sc), h = Math.round(ch * sc);
+    var c = copy ? document.createElement('canvas') : cam.canvas;
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    var ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(v, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, w, h);
+    return { canvas: c, img: ctx.getImageData(0, 0, w, h) };
+  }
+
+  function startCamera() {
+    if (S.listen === 'on') micStart();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('block', 'No camera access here');
+      toast('This page needs to be opened over https (or localhost) to use the camera.');
+      return;
+    }
+    speak('Camera on.', true);
+    setStatus('move', 'Starting camera');
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, zoom: true }, audio: false }).then(function (stream) {
+      cam.stream = stream; cam.video.srcObject = stream;
+      cam.track = stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+      setupZoom();
+      var p = cam.video.play(); if (p && p.catch) p.catch(function () {});
+      cam.on = true; $('camOff').hidden = true;
+      wake();
+      setStatus('watch', S.phase === 'play' ? 'Watching' : 'Point the camera at the board, then lock it');
+      watch.prev = null; watch.quiet = 0;
+      loop();
+      renderAll();
+    }).catch(function (err) {
+      setStatus('block', 'Camera blocked');
+      toast(err && err.name === 'NotAllowedError' ? 'Camera permission was refused. Allow it in the browser settings for this site.' : 'Could not start the camera.');
+    });
+  }
+
+  // ---------- zoom ----------
+  function setupZoom() {
+    var caps = {}, set = {};
+    try { caps = cam.track && cam.track.getCapabilities ? cam.track.getCapabilities() : {}; set = cam.track && cam.track.getSettings ? cam.track.getSettings() : {}; } catch (e) { /* no capabilities */ }
+    if (caps.zoom && 'zoom' in set && caps.zoom.max > caps.zoom.min) {
+      zoom.hw = true; zoom.min = caps.zoom.min; zoom.max = Math.min(caps.zoom.max, 10); zoom.step = caps.zoom.step || 0.1;
+    } else { zoom.hw = false; zoom.min = 1; zoom.max = 4; zoom.step = 0.1; }
+    var z = $('zoom'); z.min = zoom.min; z.max = zoom.max; z.step = zoom.step;
+    $('zoomRow').hidden = false;
+    applyZoom(S.zoom, true);
+  }
+  function applyZoom(v, initial) {
+    v = Math.max(zoom.min, Math.min(zoom.max, +v || 1));
+    var z0 = zoom.cur || 1;
+    // keep the marked corners on the same squares: zoom is a crop around the centre
+    if (!initial && S.corners && v !== z0) S.corners = S.corners.map(function (u) { return [0.5 + (u[0] - 0.5) * v / z0, 0.5 + (u[1] - 0.5) * v / z0]; });
+    zoom.cur = v; S.zoom = v;
+    if (zoom.hw) {
+      cam.video.style.transform = '';
+      try {
+        cam.track.applyConstraints({ advanced: [{ zoom: v }] }).catch(function () {
+          zoom.hw = false; zoom.min = 1; zoom.max = 4; applyZoom(Math.min(v, 4), true);
+        });
+      } catch (e) { zoom.hw = false; }
+    }
+    if (!zoom.hw) cam.video.style.transform = v > 1 ? 'scale(' + v + ')' : '';
+    $('zoom').value = v; $('zoomVal').textContent = v.toFixed(1) + '×';
+    watch.prev = null; watch.t = NO_MOTION;
+    save();
+  }
+  $('zoom').addEventListener('input', function (e) { applyZoom(e.target.value, false); });
+
+  function loop() {
+    clearTimeout(cam.timer);
+    cam.timer = setTimeout(function () { try { tick(); } catch (e) { if (window.console) console.error(e); } loop(); }, TICK);
+  }
+  function overlayVisible() { return !$('editor').hidden || !$('orient').hidden; }
+
+  function tick() {
+    if (!cam.on) return;
+    var fr = grabFrame(false);
+    if (!fr) return;
+    drawPreview(fr);
+    if (S.phase !== 'play' || !S.ref || !S.corners || cam.paused || watch.busy || overlayVisible() || tap.fixing || (last && last.mode === 'ask')) return;
+    var H = V.boardH(toPx(S.corners, fr));
+    // follow the camera if the phone sways, so only real changes on the board count as movement
+    var tr = V.track(fr.img, H, S.ref.feats, watch.t, 0.6);
+    if (tr.cost > 35) {
+      watch.t = NO_MOTION; watch.prev = null; watch.quiet = 0;
+      if (++watch.lost >= 3 && watch.state !== 'block') setStatus('block', 'Board not in view');
+      return;
+    }
+    watch.lost = 0;
+    watch.t = { dx: tr.dx, dy: tr.dy, rot: tr.rot };
+    var F = tr.feats, moving = false;
+    if (watch.prev) {
+      var d = V.diffFeatures(watch.prev, F), sorted = Array.prototype.slice.call(d).sort(function (a, b) { return a - b; });
+      var med = sorted[32], mad = Array.prototype.map.call(d, function (v) { return Math.abs(v - med); }).sort(function (a, b) { return a - b; })[32];
+      var thr = med + Math.max(20, 6 * mad), count = 0;
+      for (var i = 0; i < 64; i++) if (d[i] > thr) count++;
+      moving = count >= 2;
+    }
+    watch.prev = F;
+    if (moving) {
+      watch.quiet = 0; watch.motion = true; watch.confirm = null; watch.mineTries = 0;
+      if (watch.state !== 'move') setStatus('move', 'Movement');
+      return;
+    }
+    watch.quiet++;
+    // safety net: every few seconds, check for a change we did not see happen
+    if (!watch.motion && ++watch.sinceCheck >= 12) {
+      watch.sinceCheck = 0;
+      var dr = tr.d, mx = 0, sr = Array.prototype.slice.call(dr).sort(function (a, b) { return a - b; });
+      for (var k = 0; k < 64; k++) mx = Math.max(mx, dr[k] - sr[32]);
+      if (mx > 20) watch.motion = true;
+    }
+    if (watch.motion && (watch.force || watch.quiet >= (watch.confirm ? 2 : QUIET_TICKS))) {
+      watch.quiet = 0; watch.force = false;
+      evaluate(fr);
+    } else if (!watch.motion && watch.state !== 'watch') setStatus('watch', watchingText());
+  }
+  function watchingText() {
+    if (assumeOn() && S.assumed && S.ref && S.ref.board !== boardStr(game)) return 'Waiting for you to play it';
+    return game.turn() === S.side || S.side === 'both' ? 'Watching' : 'Watching for their move';
+  }
+
+  function drawPreview(fr) {
+    var c = $('camOverlay'), box = $('camView');
+    var bw = box.clientWidth, bh = box.clientHeight;
+    if (!bw || !bh) return;
+    var dpr = window.devicePixelRatio || 1;
+    if (c.width !== Math.round(bw * dpr) || c.height !== Math.round(bh * dpr)) { c.width = Math.round(bw * dpr); c.height = Math.round(bh * dpr); }
+    var ctx = c.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height);
+    if (!S.corners || S.phase !== 'play') return;
+    var fw = fr.img.width, fh = fr.img.height, sc = Math.min(bw / fw, bh / fh), ox = (bw - fw * sc) / 2, oy = (bh - fh * sc) / 2;
+    ctx.setTransform(dpr * sc, 0, 0, dpr * sc, dpr * ox, dpr * oy);
+    var H = V.boardH(V.moveCorners(toPx(S.corners, fr), watch.t));
+    ctx.strokeStyle = 'rgba(214,164,70,0.8)'; ctx.lineWidth = 1.5 / sc;
+    ctx.beginPath();
+    for (var i = 0; i <= 8; i++) {
+      var a = V.applyH(H, i, 0), b = V.applyH(H, i, 8), e = V.applyH(H, 0, i), f = V.applyH(H, 8, i);
+      ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.moveTo(e[0], e[1]); ctx.lineTo(f[0], f[1]);
+    }
+    ctx.stroke();
+  }
+
+  // ---------- reading a move ----------
+  // What could the board look like now, compared with the reference photo?
+  function buildHyps() {
+    var cur = boardStr(game), hyps = [];
+    if (assumeOn() && game.turn() !== S.side) {
+      // my move is assumed; only the opponent's reply is unknown
+      var before = S.assumed && S.moves.length && S.moves[S.moves.length - 1] === S.assumed ? boardStr(replay(S.moves.slice(0, -1))) : null;
+      if (before && S.ref.board === before) hyps.push({ board: before, bonus: 0, moves: [], stay: true });
+      hyps.push({ board: cur, bonus: 0, moves: [] });
+      var g1 = new Chess(game.fen());
+      g1.moves({ verbose: true }).forEach(function (m) {
+        if (m.promotion && m.promotion !== 'q') return;
+        g1.move({ from: m.from, to: m.to, promotion: m.promotion });
+        hyps.push({ board: boardStr(g1), bonus: ASSUME_REPLY_BONUS, moves: [m] });
+        g1.undo();
+      });
+      return hyps;
+    }
+    var sg = engine.result && engine.result.fen === game.fen() ? engine.result.move : null;
+    var g = new Chess(game.fen());
+    hyps.push({ board: cur, bonus: 0, moves: [] });
+    var first = g.moves({ verbose: true });
+    for (var i = 0; i < first.length; i++) {
+      var m1 = first[i];
+      if (m1.promotion && m1.promotion !== 'q') continue;
+      g.move({ from: m1.from, to: m1.to, promotion: m1.promotion });
+      var bonusSug = sg && uci(m1) === sg ? 0.25 : 0;
+      hyps.push({ board: boardStr(g), bonus: 0.3 + bonusSug, moves: [m1] });
+      var second = g.moves({ verbose: true });
+      for (var j = 0; j < second.length; j++) {
+        var m2 = second[j];
+        if (m2.promotion && m2.promotion !== 'q') continue;
+        g.move({ from: m2.from, to: m2.to, promotion: m2.promotion });
+        hyps.push({ board: boardStr(g), bonus: bonusSug, moves: [m1, m2] });
+        g.undo();
+      }
+      g.undo();
+    }
+    return hyps;
+  }
+
+  function read(photo) {
+    var corners = toPx(S.corners, photo), H = V.boardH(corners);
+    var opts = { t0: watch.t, lean: S.lean };
+    if (OCC_WEIGHT) { opts.occT = templates; opts.occW = OCC_WEIGHT; }
+    var r = V.readBoard(photo.img, H, S.ref.feats, S.ref.board, buildHyps(), opts);
+    r.ranked = r.ranked.slice(0, 6);
+    r.corners = V.moveCorners(corners, r.reg);
+    return r;
+  }
+  function rememberEmpties(feats, board) {
+    var il = V.illum(feats, board);
+    for (var s = 0; s < 64; s++) if (board[s] === '.') templates[s] = V.normSquare(feats, s, il);
+  }
+  function setRef(feats, board) { S.ref = { feats: feats, board: board }; anchor = S.ref; rememberEmpties(feats, board); }
+
+  function makeLast(photo, r, mode) {
+    return {
+      preMoves: S.moves.slice(), preFen: game.fen(), preRef: S.ref, preLean: S.lean, preCorners: S.corners, preAssumed: S.assumed,
+      feats: r.reg.feats, z: r.z, ranked: r.ranked, photo: photo, chosen: -1, mode: mode, open: mode === 'ask', corners: r.corners
+    };
+  }
+
+  function evaluate(fr) {
+    watch.busy = true;
+    setStatus('read', 'Reading the move');
+    var photo = grabFrame(true) || fr;
+    var r = read(photo);
+    watch.busy = false;
+    if (window.BOARDSCAN_DEBUG) window.BOARDSCAN_DEBUG(r, photo);
+    if (r.strong > 8 || r.stray >= 2) {   // a hand or something else is still over the board
+      watch.confirm = null;
+      setStatus('block', 'Something is covering the board');
+      if (watch.forcedBy === 'voice') { speak('Something is covering the board.', true); watch.forcedBy = null; }
+      return;
+    }
+    var best = r.best, key = best.board;
+    if (!best.moves.length && (best.stay || best.board === S.ref.board)) {   // nothing new on the board
+      watch.motion = false; watch.attempts = 0; watch.confirm = null;
+      var second = r.ranked[1] ? r.ranked[1].score : -1;
+      if (r.margin >= 0.45 && second < 0.2) { S.ref = { feats: r.reg.feats, board: S.ref.board }; S.corners = toNorm(r.corners, photo); watch.t = NO_MOTION; save(); }
+      setStatus('watch', watchingText());
+      if (watch.forcedBy === 'voice') { speak(best.stay ? 'Nothing has changed. Waiting for your move.' : 'Nothing has changed.', true); watch.forcedBy = null; }
+      return;
+    }
+    // my assumed move is now on the board (no reply yet), or a real move was played
+    // my own (expected) move needs less margin: tested on the synthetic games, 0.35 confirms it far more often
+    // than 0.45 (87% against 61% of reads) with no extra cases of a reply being swallowed
+    var needScore = best.moves.length ? 0.8 : 0.6, needMargin = best.moves.length ? 0.45 : 0.35;
+    var sure = best.score >= needScore && r.margin >= needMargin;
+    if (sure && watch.confirm !== key) {   // read it once more from a fresh frame before trusting it
+      watch.confirm = key; watch.lastTop = key;
+      setStatus('read', 'Double-checking');
+      return;
+    }
+    if (sure) {
+      watch.motion = false; watch.attempts = 0; watch.lastTop = null; watch.confirm = null; watch.forcedBy = null; watch.mineTries = 0;
+      if (!best.moves.length) {             // just my own (assumed) move seen
+        prevRef = anchor && anchor.board === S.ref.board ? anchor : S.ref;
+        S.lean = V.learnLean(S.lean, r.z, S.ref.board, best.board);
+        setRef(r.reg.feats, best.board);
+        S.corners = toNorm(r.corners, photo); watch.t = NO_MOTION;
+        setStatus('watch', watchingText());
+        save(); renderAll();
+        return;
+      }
+      last = makeLast(photo, r, 'auto');
+      S.corners = toNorm(r.corners, photo); watch.t = NO_MOTION;
+      applyCandidate(0, true);
+      return;
+    }
+    watch.confirm = null;
+    if (!best.moves.length) {   // not sure yet whether my own move is on the board: look a few more times, never ask
+      watch.lastTop = null;
+      if (++watch.mineTries < 4) { setStatus('read', 'Checking again'); return; }
+      watch.motion = false; watch.attempts = 0; watch.mineTries = 0;
+      setStatus('watch', watchingText());
+      return;
+    }
+    watch.mineTries = 0;
+    watch.attempts = watch.lastTop === key ? watch.attempts + 1 : 1;
+    watch.lastTop = key;
+    if (watch.attempts >= 3) {
+      watch.motion = false; watch.attempts = 0; watch.lastTop = null; watch.forcedBy = null;
+      last = makeLast(photo, r, 'ask');
+      S.corners = toNorm(r.corners, photo); watch.t = NO_MOTION;
+      setStatus('ask', 'Not sure: pick the move');
+      askAloud();
+      save(); renderAll();
+      return;
+    }
+    setStatus('read', 'Checking again');
+  }
+
+  // I did not play the move I was told: forget the assumption and read what is really on the board
+  function deviate(byVoice) {
+    if (last && last.mode === 'ask') { restorePre(); S.corners = last.preCorners; }
+    last = null;
+    if (S.assumed && S.moves.length && S.moves[S.moves.length - 1] === S.assumed) { S.moves.pop(); game = replay(S.moves); }
+    // if the camera had already taken my move as the one it told me, go back to the photo from before it
+    var now = boardStr(game);
+    if (S.ref && S.ref.board !== now && prevRef && prevRef.board === now) { S.ref = prevRef; anchor = prevRef; }
+    S.assumed = null; S.advice = null; S.skipAssume = game.fen(); announcedFen = game.fen();
+    watch.motion = true; watch.force = true; watch.attempts = 0; watch.confirm = null; watch.prev = null; watch.lastTop = null;
+    cam.paused = false;
+    onPosition();
+    speak(byVoice ? 'OK. Reading your move.' : 'Reading your move.', true);
+  }
+
+  // The opponent has moved but the camera did not notice (for example a dark piece on a dark square, or the
+  // move was made while the board was covered). Read again knowing that they did move: only their possible
+  // replies are compared, against the photo from before the move. Two clear, matching reads are accepted;
+  // otherwise the most likely replies are offered.
+  // photos to compare with: the last confirmed position, and (if my move was confirmed since) the one before
+  // my move, in case their move happened before mine was confirmed and got hidden in that photo
+  function theyMovedBases() {
+    var out = [anchor && anchor.board === S.ref.board ? anchor : S.ref];
+    var mineFirst = S.assumed && S.moves.length && S.moves[S.moves.length - 1] === S.assumed;
+    if (mineFirst && prevRef && S.ref.board !== prevRef.board && prevRef.board === boardStr(replay(S.moves.slice(0, -1)))) out.push(prevRef);
+    return out;
+  }
+  function replyHyps() {
+    var g = new Chess(game.fen()), hyps = [];
+    g.moves({ verbose: true }).forEach(function (m) {
+      if (m.promotion && m.promotion !== 'q') return;
+      g.move({ from: m.from, to: m.to, promotion: m.promotion }); hyps.push({ board: boardStr(g), bonus: 0, moves: [m] }); g.undo();
+    });
+    return hyps;
+  }
+  function readFrom(photo, base, hyps) {
+    var corners = toPx(S.corners, photo), H = V.boardH(corners);
+    var r = V.readBoard(photo.img, H, base.feats, base.board, hyps, { t0: watch.t, lean: S.lean });
+    r.ranked = r.ranked.slice(0, 6); r.corners = V.moveCorners(corners, r.reg);
+    return r;
+  }
+  function theyMoved(byVoice) {
+    if (S.phase !== 'play' || !cam.on || !S.ref) { speak('The camera is not running.', true); return; }
+    if (last && last.mode === 'ask') { askAloud(); return; }
+    if (needsSuggestion() || game.game_over()) { speak(game.game_over() ? 'The game is over.' : 'It is your move.', true); return; }
+    if (watch.busy) return;
+    if (cam.paused) setPaused(false);
+    var fr = grabFrame(true); if (!fr) return;
+    var bases = theyMovedBases(), hyps = replyHyps(), fen = game.fen();
+    if (!hyps.length) return;
+    var base = bases[0], r1 = readFrom(fr, base, hyps);
+    if (bases[1]) { var rb = readFrom(fr, bases[1], hyps); if (rb.margin > r1.margin) { base = bases[1]; r1 = rb; } }
+    if (r1.strong > 8 || r1.stray >= 2) { setStatus('block', 'Something is covering the board'); speak('Something is covering the board.', true); return; }
+    watch.busy = true;
+    setStatus('read', 'Reading their move');
+    setTimeout(function () {
+      watch.busy = false;
+      if (S.phase !== 'play' || game.fen() !== fen || (last && last.mode === 'ask')) return;
+      var fr2 = grabFrame(true), r2 = fr2 ? readFrom(fr2, base, hyps) : null;
+      var clear = function (r) { return r.best.score >= 0.8 && r.margin >= 0.45 && r.stray < 2 && r.strong <= 8; };
+      var ok = r2 && clear(r1) && clear(r2) && r1.best.board === r2.best.board;
+      var r = r2 && !(r2.strong > 8 || r2.stray >= 2) ? r2 : r1, photo = r === r2 ? fr2 : fr;
+      last = makeLast(photo, r, ok ? 'auto' : 'ask');
+      last.preRef = base;
+      S.corners = toNorm(r.corners, photo); watch.t = NO_MOTION; watch.motion = false; watch.attempts = 0; watch.confirm = null; watch.lastTop = null; watch.prev = null;
+      if (ok) { applyCandidate(0, true); return; }
+      setStatus('ask', 'Which move did they play?');
+      askAloud('Which move did they play? ');
+      save(); renderAll();
+    }, window.BOARDSCAN_TICK ? window.BOARDSCAN_TICK * 2 : 450);
+  }
+
+  function rescan(byVoice) {
+    if (S.phase !== 'play' || !cam.on) { if (byVoice) speak('The camera is not running.', true); return; }
+    if (last && last.mode === 'ask') { againFromAsk(); return; }
+    setPaused(false);
+    watch.motion = true; watch.force = true; watch.confirm = null; watch.forcedBy = byVoice ? 'voice' : null;
+    setStatus('read', 'Reading the board');
+  }
+  function setPaused(p) { cam.paused = p; watch.prev = null; setStatus(p ? 'off' : 'watch', p ? 'Paused' : watchingText()); renderActions(); }
+
+  // choices offered when unsure (and which candidate each spoken number means)
+  function askOptions() { var out = []; if (!last) return out; last.ranked.forEach(function (c, i) { if (c.moves.length && out.length < 4) out.push(i); }); return out; }
+  function askAloud(intro) {
+    var opts = askOptions().slice(0, 3);
+    if (!opts.length) { speak('I could not read the last move. Check the screen.'); return; }
+    var words = ['one', 'two', 'three'], parts = opts.map(function (i, k) { return 'say ' + words[k] + ' for ' + candSpeech(last.ranked[i]); });
+    speak((intro || 'Not sure about the last move. ') + (mic.want ? parts.join(', ') + '.' : 'Check the screen.'));
+  }
+  function candSpeech(c) {
+    var g = new Chess(last.preFen);
+    return c.moves.map(function (m) { var r = g.move({ from: m.from, to: m.to, promotion: m.promotion }); return r ? moveSpeech(r) : m.from + m.to; }).join(', then ');
+  }
+
+  function applyCandidate(i, fromWatch) {
+    var c = last.ranked[i];
+    S.moves = last.preMoves.concat(c.moves.map(uci));
+    game = replay(S.moves);
+    S.lean = V.learnLean(last.preLean, last.z, last.preRef.board, c.board);
+    setRef(last.feats, c.board);
+    last.chosen = i;
+    if (!fromWatch) { last.mode = 'picked'; last.open = false; }
+    var g = new Chess(last.preFen), said = [];
+    c.moves.forEach(function (m) {
+      var r = g.move({ from: m.from, to: m.to, promotion: m.promotion });
+      if (r && (S.side === 'both' || r.color !== S.side)) said.push(moveSpeech(r));
+    });
+    pendingSay = S.say === 'on' && said.length ? said.join(', then ') : '';
+    if (c.moves.some(function (m) { return m.color === S.side; })) S.assumed = null;
+    announcedFen = null;
+    watch.prev = null;
+    setStatus('watch', 'Watching');
+    onPosition();
+  }
+  function pickCandidate(i, byVoice) {
+    applyCandidate(i, false);
+    if (byVoice && !needsSuggestion()) speak('Got it.', true);
+    toast('Got it.');
+  }
+  function restorePre() { S.moves = last.preMoves.slice(); game = replay(S.moves); S.ref = last.preRef; S.lean = last.preLean; S.assumed = last.preAssumed; }
+  function againFromAsk() {
+    restorePre(); S.corners = last.preCorners; last = null;
+    watch.motion = true; watch.quiet = 0; watch.attempts = 0; watch.prev = null; watch.force = true;
+    onPosition();
+  }
+
+  function candLabel(c) {
+    if (!c.moves.length) return c.stay ? 'Nothing yet' : 'Nothing new';
+    var g = new Chess(last.preFen);
+    return c.moves.map(function (m) { var fen = g.fen(), r = g.move({ from: m.from, to: m.to, promotion: m.promotion }); return numbered(fen, r ? r.san : m.from + m.to); }).join(' ');
+  }
+
+  // ---------- rendering ----------
+  function evalText(r) {
+    var who = S.side === 'both' ? ' for ' + sideName(game.turn()) : ' for you';
+    if (r.mate != null) return r.mate > 0 ? 'mate in ' + r.mate : 'gets mated in ' + -r.mate;
+    if (r.cp == null) return '';
+    var v = r.cp / 100;
+    return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(2) + who;
+  }
+  function levelText() { return S.elo === 'max' ? 'full strength' : 'about ' + S.elo + ' Elo'; }
+
+  function renderReadout() {
+    var el = $('readout'), h = '';
+    if (S.phase === 'setup') {
+      h = '<p class="eyebrow">Setup</p><div class="big waiting">New game</div>' +
+        '<ol class="steps"><li>Set the pieces up in the starting position and pick your side and level below.</li>' +
+        '<li>Put the phone above the board, start the camera, zoom until the board fills the picture.</li>' +
+        '<li>Lock the board and tap its 4 corners. After that, hands off: moves are read and spoken.</li></ol>';
+    } else if (game.game_over()) {
+      var head = game.in_checkmate() ? 'Checkmate' : game.in_stalemate() ? 'Stalemate' : 'Draw';
+      var sub = game.in_checkmate() ? sideName(game.turn() === 'w' ? 'b' : 'w') + ' wins.' :
+        game.in_threefold_repetition() ? 'Threefold repetition.' : game.insufficient_material() ? 'Not enough material to mate.' : game.in_stalemate() ? 'No legal moves, not in check.' : 'Fifty-move rule.';
+      h = '<p class="eyebrow">Game over</p><div class="big">' + head + '</div><p class="sub">' + sub + '</p>';
+    } else if (needsSuggestion()) {
+      var label = S.side === 'both' ? sideName(game.turn()) + ' to play' : 'Your move';
+      var sg = suggestion();
+      if (engine.failed) h = '<p class="eyebrow">' + label + '</p><div class="big waiting">No engine</div><p class="sub">The engine did not load. Reload the page to try again.</p>';
+      else if (!sg) h = '<p class="eyebrow">' + label + '</p><div class="big waiting">Thinking</div><p class="sub">' + (engine.ready ? 'Looking for a move (' + levelText() + ')…' : 'Engine is loading…') + '</p>';
+      else {
+        var r = sg.r, san = toSan(game.fen(), r.move);
+        var bits = ['<b>' + r.move.slice(0, 2) + ' → ' + r.move.slice(2, 4) + '</b>'];
+        var ev = evalText(r); if (ev) bits.push(ev);
+        bits.push(levelText());
+        bits.push('depth ' + r.depth + (sg.live ? ', still thinking' : ''));
+        h = '<p class="eyebrow">' + label + '</p><div class="big">' + esc(san) + '</div><p class="sub">' + bits.join(' · ') + '</p>';
+      }
+    } else if (S.advice && S.advice.after === game.fen()) {
+      var seen = S.ref && S.ref.board === boardStr(game);
+      h = '<p class="eyebrow">Your move</p><div class="big">' + esc(S.advice.san) + '</div><p class="sub"><b>' + S.advice.uci.slice(0, 2) + ' → ' + S.advice.uci.slice(2, 4) + '</b> · ' +
+        (seen ? 'seen on the board. Watching for their reply.' : 'play it; then the camera watches for their reply.') + '</p>';
+    } else {
+      h = '<p class="eyebrow">Their move</p><div class="big waiting">' + sideName(game.turn()) + ' to move</div><p class="sub">Watching the board for their move.</p>';
+    }
+    el.innerHTML = h;
+  }
+
+  function renderActions() {
+    var a = $('mainActions'), hint = $('actionHint'), btns = [];
+    if (!cam.on) btns.push('<button class="btn primary wide" data-act="camera">Start camera</button>');
+    else if (S.phase === 'setup') btns.push('<button class="btn primary wide" data-act="lock">Lock board</button>');
+    else {
+      btns.push('<button class="btn primary wide" data-act="repeat">Repeat last</button>');
+      btns.push('<button class="btn" data-act="rescan">Rescan</button>');
+      if (!needsSuggestion() && !game.game_over()) btns.push('<button class="btn" data-act="theymoved">They moved</button>');
+      btns.push('<button class="btn" data-act="pause">' + (cam.paused ? 'Resume' : 'Pause') + '</button>');
+    }
+    a.innerHTML = btns.join('');
+    hint.textContent = !cam.on ? 'Starting the camera also turns on the voice and the microphone. Connect your headphones first.' :
+      S.phase === 'setup' ? 'Pieces in the starting position, zoom so the board fills the picture, then Lock board.' :
+        cam.paused ? 'Paused: moves are not being read.' : 'Hands off the phone. Moves are read about a second after hands leave the board.';
+    $('btnBack').disabled = !S.moves.length || S.phase !== 'play';
+    $('btnTap').disabled = S.phase !== 'play' || game.game_over();
+    $('btnCorners').disabled = S.phase !== 'play' || !cam.on;
+  }
+
+  function svgEl(parts, tag, attrs, text) {
+    var s = '<' + tag;
+    for (var k in attrs) s += ' ' + k + '="' + attrs[k] + '"';
+    parts.push(text == null ? s + '/>' : s + '>' + text + '</' + tag + '>');
+  }
+  function renderBoard() {
+    var U = 100, flip = S.side === 'b', b = boardStr(game), p = [];
+    var hist = game.history({ verbose: true }), lm = hist.length ? hist[hist.length - 1] : null, marks = {}, targets = {};
+    if (lm) { marks[sqIndex(lm.from)] = 1; marks[sqIndex(lm.to)] = 1; }
+    if (tap.on && tap.sel != null) game.moves({ square: sqName(tap.sel), verbose: true }).forEach(function (m) { targets[sqIndex(m.to)] = 1; });
+    p.push('<defs><marker id="ah" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="2.6" markerHeight="2.6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>');
+    function pos(i) { var f = i % 8, r = (i / 8) | 0; return flip ? [(7 - f) * U, (7 - r) * U] : [f * U, r * U]; }
+    for (var i = 0; i < 64; i++) {
+      var f = i % 8, r = (i / 8) | 0, xy = pos(i), dark = (f + 8 - r) % 2 === 1;
+      svgEl(p, 'rect', { x: xy[0], y: xy[1], width: U, height: U, class: 'sq ' + (dark ? 'sq-d' : 'sq-l'), 'data-sq': i });
+      if (marks[i]) svgEl(p, 'rect', { x: xy[0], y: xy[1], width: U, height: U, class: 'mk' });
+      if (tap.sel === i) svgEl(p, 'rect', { x: xy[0] + 4, y: xy[1] + 4, width: U - 8, height: U - 8, class: 'selq' });
+      if (xy[0] === 0) svgEl(p, 'text', { x: xy[0] + 6, y: xy[1] + 21, class: 'co ' + (dark ? 'co-d' : 'co-l') }, String(8 - r));
+      if (xy[1] === 7 * U) svgEl(p, 'text', { x: xy[0] + U - 6, y: xy[1] + U - 7, class: 'co ' + (dark ? 'co-d' : 'co-l'), 'text-anchor': 'end' }, 'abcdefgh'[f]);
+    }
+    for (var j = 0; j < 64; j++) {
+      var ch = b[j]; if (ch === '.') continue;
+      var q = pos(j), t = ch.toUpperCase(), cls = ch === t ? 'pw' : 'pb';
+      svgEl(p, 'circle', { cx: q[0] + U / 2, cy: q[1] + U / 2, r: t === 'P' ? 26 : 37, class: cls });
+      if (t !== 'P') svgEl(p, 'text', { x: q[0] + U / 2, y: q[1] + U / 2 + 2, class: 'pl ' + cls + 't', 'text-anchor': 'middle', 'dominant-baseline': 'central' }, t);
+    }
+    for (var k in targets) { var tq = pos(+k); svgEl(p, 'circle', { cx: tq[0] + U / 2, cy: tq[1] + U / 2, r: 13, class: 'tg' }); }
+    var sg = needsSuggestion() && !tap.on ? suggestion() : null;
+    if (sg) {
+      var a = pos(sqIndex(sg.r.move.slice(0, 2))), c = pos(sqIndex(sg.r.move.slice(2, 4)));
+      var dx = c[0] - a[0], dy = c[1] - a[1], L = Math.hypot(dx, dy) || 1, sh = 34 / L;
+      svgEl(p, 'line', { x1: a[0] + U / 2, y1: a[1] + U / 2, x2: c[0] + U / 2 - dx * sh, y2: c[1] + U / 2 - dy * sh, class: 'arrow' + (sg.live ? ' live' : ''), 'marker-end': 'url(#ah)' });
+    }
+    $('board').innerHTML = p.join('');
+  }
+  function renderSheet() {
+    var h = game.history(), el = $('sheet');
+    if (!h.length) { el.innerHTML = '<p class="empty">No moves yet.</p>'; return; }
+    var rows = [];
+    for (var i = 0; i < h.length; i += 2) {
+      var curW = i === h.length - 1, curB = i + 1 === h.length - 1;
+      rows.push('<li><span>' + (i / 2 + 1) + '.</span><span' + (curW ? ' class="cur"' : '') + '>' + esc(h[i]) + '</span><span' + (curB ? ' class="cur"' : '') + '>' + (h[i + 1] ? esc(h[i + 1]) : '') + '</span></li>');
+    }
+    el.innerHTML = '<ol>' + rows.join('') + '</ol>';
+  }
+  function renderSettings() {
+    [['segSide', S.side], ['segElo', String(S.elo)], ['segThink', String(S.think)], ['segAssume', S.assume], ['segVoice', S.voice], ['segListen', S.listen], ['segSay', S.say]].forEach(function (x) {
+      Array.prototype.forEach.call($(x[0]).querySelectorAll('button'), function (b) { b.setAttribute('aria-pressed', String(b.dataset.v === x[1])); });
+    });
+    $('fen').textContent = 'FEN ' + game.fen();
+    $('btnNew').textContent = resetArmed ? 'Tap again to reset' : 'New game';
+  }
+  function renderTapbar() {
+    $('tapbar').hidden = !tap.on;
+    $('tapText').textContent = tap.fixing ? 'Tap the move(s) that were played: piece first, then its square.' : 'Tap a piece, then the square it moved to.';
+    $('btnTap').classList.toggle('on', tap.on);
+  }
+  function drawThumb(canvas) {
+    var size = 240; canvas.width = size; canvas.height = size;
+    var ctx = canvas.getContext('2d');
+    var data = V.rectify(last.photo.img, V.boardH(last.corners), size);
+    ctx.putImageData(new ImageData(data, size, size), 0, 0);
+    var q = size / 8, chosen = last.chosen >= 0 ? last.ranked[last.chosen] : last.ranked[0], ch = {};
+    chosen.changed.forEach(function (s) { ch[s] = 1; });
+    for (var s = 0; s < 64; s++) {
+      var x = (s % 8) * q, y = ((s / 8) | 0) * q, z = Math.max(0, Math.min(1, last.z[s]));
+      if (ch[s]) { ctx.fillStyle = 'rgba(214,164,70,0.38)'; ctx.fillRect(x, y, q, q); }
+      if (z > 0.3) { ctx.strokeStyle = 'rgba(255,255,255,' + (0.35 + 0.65 * z) + ')'; ctx.lineWidth = 1 + 2.5 * z; ctx.strokeRect(x + 2, y + 2, q - 4, q - 4); }
+    }
+    canvas.style.transform = S.side === 'b' ? 'rotate(180deg)' : '';
+  }
+  function renderResult() {
+    var el = $('result');
+    if (!last || last.mode === 'tapping' || S.phase !== 'play') { el.hidden = true; return; }
+    el.hidden = false;
+    var h, tone = 'ok', chosen = last.chosen >= 0 ? last.ranked[last.chosen] : null;
+    if (last.mode !== 'ask' && chosen) {
+      h = '<p class="eyebrow">Last read</p><h3>' + esc(candLabel(chosen)) + '</h3>' +
+        '<div class="cands"><button class="btn small" data-act="wrong">Wrong move?</button><button class="btn small" data-act="dismiss">OK</button></div>';
+    } else {
+      tone = 'ask';
+      var opts = askOptions(), btns = opts.map(function (i, k) {
+        return '<button class="btn small cand' + (k === 0 ? ' first' : '') + '" data-cand="' + i + '"><span class="num">' + (k + 1) + '</span> ' + esc(candLabel(last.ranked[i])) + '</button>';
+      }).join('');
+      var dev = last.preAssumed ? '<button class="btn small" data-act="deviate">I played a different move</button>' : '';
+      h = '<p class="eyebrow">Check this one</p><h3>Which move was played?</h3><p class="hint">Watching is paused until you pick' + (mic.want ? ' (or say the number)' : '') + '.</p><div class="cands">' + btns + '</div>' +
+        '<div class="cands"><button class="btn small" data-act="tapfix">Tap it in</button>' + dev + '<button class="btn small" data-act="again">Read again</button><button class="btn small" data-act="adjust">Adjust corners</button></div>';
+    }
+    el.dataset.tone = tone;
+    el.innerHTML = '<canvas aria-label="Straightened camera view with changed squares outlined"></canvas><div class="body">' + h + '</div>';
+    drawThumb(el.querySelector('canvas'));
+  }
+  function renderAll() { renderReadout(); renderActions(); renderBoard(); renderSheet(); renderSettings(); renderTapbar(); renderResult(); renderMic(); }
+  function onPosition() { save(); renderAll(); kick(); }
+
+  function toPx(norm, photo) { return norm.map(function (q) { return [q[0] * photo.img.width, q[1] * photo.img.height]; }); }
+  function toNorm(px, photo) { return px.map(function (q) { return [q[0] / photo.img.width, q[1] / photo.img.height]; }); }
+
+  // ---------- result card actions ----------
+  $('result').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b || !last) return;
+    if (b.dataset.cand != null) { pickCandidate(+b.dataset.cand, false); return; }
+    var act = b.dataset.act;
+    if (act === 'wrong') { last.open = true; last.mode = 'ask'; renderResult(); }
+    else if (act === 'dismiss') { last = null; renderResult(); }
+    else if (act === 'deviate') { deviate(false); }
+    else if (act === 'tapfix') {
+      restorePre();
+      S.ref = { feats: last.feats, board: boardStr(game) };
+      last.mode = 'tapping'; tap.on = true; tap.fixing = true; tap.sel = null;
+      announcedFen = game.fen();   // no new advice until the real moves are in
+      onPosition();
+    } else if (act === 'again') {
+      againFromAsk();
+    } else if (act === 'adjust') {
+      var snap = last, photo = last.photo;
+      openEditor(photo, snap.corners, true, function (pts) {
+        last = snap; restorePre(); last = null;
+        S.corners = toNorm(pts, photo); watch.t = NO_MOTION; save();
+        watch.motion = true; watch.quiet = 0; watch.prev = null;
+        renderAll();
+      });
+    }
+  });
+
+  // ---------- tap entry ----------
+  $('board').addEventListener('click', function (e) {
+    if (!tap.on) return;
+    var r = e.target.closest('[data-sq]'), idx;
+    if (r) idx = +r.getAttribute('data-sq');
+    else {
+      var box = $('board').getBoundingClientRect();
+      var vx = Math.floor((e.clientX - box.left) / box.width * 8), vy = Math.floor((e.clientY - box.top) / box.height * 8);
+      if (vx < 0 || vx > 7 || vy < 0 || vy > 7) return;
+      if (S.side === 'b') { vx = 7 - vx; vy = 7 - vy; }
+      idx = vy * 8 + vx;
+    }
+    var name = sqName(idx);
+    if (tap.sel != null) {
+      var opts = game.moves({ square: sqName(tap.sel), verbose: true }).filter(function (m) { return m.to === name && (!m.promotion || m.promotion === 'q'); });
+      if (opts.length) {
+        var m = opts[0];
+        game.move({ from: m.from, to: m.to, promotion: m.promotion });
+        S.moves.push(uci(m));
+        if (m.color === S.side) { S.assumed = null; S.advice = null; }
+        tap.sel = null;
+        if (tap.fixing && S.ref) setRef(S.ref.feats, boardStr(game));
+        if (!tap.fixing) last = null;
+        announcedFen = tap.fixing ? game.fen() : null;
+        onPosition();
+        return;
+      }
+    }
+    var pc = game.get(name);
+    tap.sel = pc && pc.color === game.turn() ? idx : null;
+    renderBoard();
+  });
+  function endTap() {
+    tap.on = false; tap.sel = null;
+    if (tap.fixing) { tap.fixing = false; last = null; watch.prev = null; announcedFen = null; toast('Saved. Watching again.'); }
+  }
+  $('btnTap').addEventListener('click', function () {
+    if (tap.on) { endTap(); onPosition(); return; }
+    tap.on = true; tap.sel = null; renderAll();
+  });
+  $('tapDone').addEventListener('click', function () { endTap(); onPosition(); });
+  $('btnBack').addEventListener('click', function () {
+    if (!S.moves.length) return;
+    var popped = S.moves.pop(); game = replay(S.moves); last = null; tap.sel = null; announcedFen = null;
+    if (popped === S.assumed) { S.assumed = null; S.advice = null; }
+    onPosition();
+  });
+  $('btnCorners').addEventListener('click', function () {
+    var fr = grabFrame(true); if (!fr) return;
+    openEditor(fr, V.moveCorners(toPx(S.corners, fr), watch.t), true, function (pts) { S.corners = toNorm(pts, fr); watch.t = NO_MOTION; save(); watch.prev = null; watch.motion = true; renderAll(); });
+  });
+
+  // ---------- main buttons + settings ----------
+  $('mainActions').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var act = b.dataset.act;
+    if (act === 'camera') startCamera();
+    else if (act === 'lock') {
+      var fr = grabFrame(true);
+      if (!fr) { toast('The camera is not ready yet.'); return; }
+      openEditor(fr, S.corners ? toPx(S.corners, fr) : null, false, function (pts) { startOrient(fr, pts); });
+    } else if (act === 'repeat') speak(lastSpoken || 'Nothing to repeat yet.', true);
+    else if (act === 'rescan') rescan(false);
+    else if (act === 'theymoved') theyMoved(false);
+    else if (act === 'pause') setPaused(!cam.paused);
+  });
+  function seg(id, key, num) {
+    $(id).addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      var v = num ? +b.dataset.v : b.dataset.v;
+      if (S[key] === v) return;
+      S[key] = v;
+      if (key === 'think' || key === 'elo') { engine.result = null; announcedFen = null; }
+      if (key === 'side' || key === 'assume') { tap.sel = null; announcedFen = null; }
+      if (key === 'voice' && S.voice === 'on') speak('Voice on.', true);
+      if (key === 'listen') { if (S.listen === 'on') micStart(); else micStop(); }
+      onPosition();
+    });
+  }
+  seg('segSide', 'side'); seg('segElo', 'elo'); seg('segThink', 'think', true); seg('segAssume', 'assume'); seg('segVoice', 'voice'); seg('segListen', 'listen'); seg('segSay', 'say');
+  $('btnNew').addEventListener('click', function () {
+    if (!resetArmed) { resetArmed = setTimeout(function () { resetArmed = 0; renderSettings(); }, 3000); renderSettings(); return; }
+    clearTimeout(resetArmed); resetArmed = 0;
+    S.phase = 'setup'; S.moves = []; S.ref = null; S.lean = V.newLean(); S.assumed = null; S.advice = null;
+    templates = new Array(64).fill(null); prevRef = null; anchor = null;
+    game = new Chess(); last = null; tap = { on: false, sel: null, fixing: false }; announcedFen = null; pendingSay = '';
+    watch.motion = false; watch.prev = null;
+    stopEngine();
+    setChip(engine.failed ? 'error' : engine.ready ? (engine.kind === 'sf17' ? 'Stockfish 17' : 'Stockfish 10') : 'load', engine.failed ? 'Engine failed' : engine.ready ? (engine.kind === 'sf17' ? 'Stockfish 17' : 'Stockfish 10') : 'Engine loading');
+    if (cam.on) setStatus('watch', 'Point the camera at the board, then lock it');
+    onPosition();
+  });
+
+  // ---------- corner editor ----------
+  var ed = { photo: null, pts: [], labels: null, drag: -1, grab: [0, 0], scale: 1, dpr: 1, onDone: null };
+  function openEditor(photo, pts, labeled, onDone) {
+    ed.photo = photo; ed.pts = pts ? pts.map(function (q) { return q.slice(); }) : [];
+    ed.labels = labeled ? ['a8', 'h8', 'h1', 'a1'] : null; ed.onDone = onDone;
+    $('edTitle').textContent = labeled ? 'Adjust the corners' : 'Mark the corners';
+    $('edHint').textContent = labeled ? 'Drag each dot onto its corner of the squares, then press Done.' : 'Tap the 4 outer corners of the squares, not the frame. Drag a dot to fine-tune.';
+    $('edClear').hidden = labeled;
+    $('orient').hidden = true; $('editor').hidden = false;
+    document.documentElement.style.overflow = 'hidden';
+    requestAnimationFrame(layoutEditor);
+  }
+  function closeOverlays() { $('editor').hidden = true; $('orient').hidden = true; document.documentElement.style.overflow = ''; }
+  function layoutEditor() {
+    if ($('editor').hidden) return;
+    var stage = $('edStage'), c = $('edCanvas'), im = ed.photo.canvas;
+    var s = Math.min(stage.clientWidth / im.width, stage.clientHeight / im.height);
+    var cw = Math.max(1, Math.floor(im.width * s)), ch = Math.max(1, Math.floor(im.height * s));
+    ed.dpr = window.devicePixelRatio || 1; ed.scale = s;
+    c.style.width = cw + 'px'; c.style.height = ch + 'px';
+    c.width = Math.round(cw * ed.dpr); c.height = Math.round(ch * ed.dpr);
+    drawEditor();
+  }
+  function drawEditor() {
+    var c = $('edCanvas'), ctx = c.getContext('2d'), k = ed.scale * ed.dpr, pts = ed.pts, u = 1 / ed.scale;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(ed.photo.canvas, 0, 0, c.width, c.height);
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    ctx.lineWidth = 1.5 * u;
+    if (pts.length === 4) {
+      var H = V.boardH(ed.labels ? pts : V.orderClockwise(pts));
+      if (H) {
+        ctx.strokeStyle = 'rgba(214,164,70,0.85)'; ctx.beginPath();
+        for (var i = 0; i <= 8; i++) {
+          var a = V.applyH(H, i, 0), b = V.applyH(H, i, 8), cc = V.applyH(H, 0, i), d = V.applyH(H, 8, i);
+          ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.moveTo(cc[0], cc[1]); ctx.lineTo(d[0], d[1]);
+        }
+        ctx.stroke();
+      }
+    } else if (pts.length > 1) {
+      ctx.strokeStyle = 'rgba(214,164,70,0.85)'; ctx.beginPath();
+      pts.forEach(function (q, i) { if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); });
+      ctx.stroke();
+    }
+    ctx.font = '600 ' + (13 * u) + 'px "IBM Plex Mono", monospace';
+    pts.forEach(function (q, i) {
+      ctx.beginPath(); ctx.arc(q[0], q[1], 11 * u, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(214,164,70,0.28)'; ctx.fill();
+      ctx.strokeStyle = '#d6a446'; ctx.lineWidth = 2 * u; ctx.stroke();
+      ctx.beginPath(); ctx.arc(q[0], q[1], 2 * u, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+      var label = ed.labels ? ed.labels[i] : String(i + 1);
+      ctx.lineWidth = 3 * u; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.strokeText(label, q[0] + 14 * u, q[1] - 12 * u);
+      ctx.fillStyle = '#fff'; ctx.fillText(label, q[0] + 14 * u, q[1] - 12 * u);
+    });
+    $('edDone').disabled = pts.length !== 4;
+  }
+  function drawLoupe(q) {
+    var l = $('loupe'), ctx = l.getContext('2d'), r = 22 / ed.scale;
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, l.width, l.height);
+    ctx.drawImage(ed.photo.canvas, q[0] - r, q[1] - r, 2 * r, 2 * r, 0, 0, l.width, l.height);
+    ctx.strokeStyle = '#d6a446'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(l.width / 2, 0); ctx.lineTo(l.width / 2, l.height); ctx.moveTo(0, l.height / 2); ctx.lineTo(l.width, l.height / 2); ctx.stroke();
+    var c = $('edCanvas').getBoundingClientRect(), leftHalf = q[0] * ed.scale < c.width / 2;
+    l.style.left = leftHalf ? 'auto' : '8px'; l.style.right = leftHalf ? '8px' : 'auto';
+    l.hidden = false;
+  }
+  function evPt(e) {
+    var r = $('edCanvas').getBoundingClientRect();
+    return [Math.max(0, Math.min(ed.photo.img.width - 1, (e.clientX - r.left) / ed.scale)), Math.max(0, Math.min(ed.photo.img.height - 1, (e.clientY - r.top) / ed.scale))];
+  }
+  var edc = $('edCanvas');
+  edc.addEventListener('pointerdown', function (e) {
+    var q = evPt(e), best = -1, bd = 1e9;
+    ed.pts.forEach(function (p, i) { var d = Math.hypot(p[0] - q[0], p[1] - q[1]) * ed.scale; if (d < bd) { bd = d; best = i; } });
+    if (best >= 0 && bd < 36) { ed.drag = best; ed.grab = [ed.pts[best][0] - q[0], ed.pts[best][1] - q[1]]; }
+    else if (ed.pts.length < 4) { ed.pts.push(q); ed.drag = ed.pts.length - 1; ed.grab = [0, 0]; }
+    else return;
+    edc.setPointerCapture(e.pointerId);
+    drawEditor(); drawLoupe(ed.pts[ed.drag]);
+    e.preventDefault();
+  });
+  edc.addEventListener('pointermove', function (e) {
+    if (ed.drag < 0) return;
+    var q = evPt(e);
+    ed.pts[ed.drag] = [q[0] + ed.grab[0], q[1] + ed.grab[1]];
+    drawEditor(); drawLoupe(ed.pts[ed.drag]);
+  });
+  function endDrag() { ed.drag = -1; $('loupe').hidden = true; }
+  edc.addEventListener('pointerup', endDrag);
+  edc.addEventListener('pointercancel', endDrag);
+  $('edClear').addEventListener('click', function () { ed.pts = []; drawEditor(); });
+  $('edCancel').addEventListener('click', function () { closeOverlays(); renderAll(); });
+  $('edDone').addEventListener('click', function () {
+    if (ed.pts.length !== 4) return;
+    var pts = ed.pts.map(function (q) { return q.slice(); }), cb = ed.onDone;
+    closeOverlays(); cb(pts);
+  });
+  window.addEventListener('resize', function () { if (!$('editor').hidden) layoutEditor(); });
+
+  // ---------- orientation check ----------
+  var or = { photo: null, cw: null, rot: 0 };
+  function startOrient(photo, pts) {
+    or.photo = photo; or.cw = V.orderClockwise(pts);
+    or.rot = V.detectOrientation(photo.img, or.cw).rotation;
+    $('editor').hidden = true; $('orient').hidden = false;
+    document.documentElement.style.overflow = 'hidden';
+    drawOrient();
+  }
+  function drawOrient() {
+    var c = $('orCanvas'), ctx = c.getContext('2d'), n = 320;
+    var data = V.rectify(or.photo.img, V.boardH(V.rotateCorners(or.cw, or.rot)), n);
+    var tmp = document.createElement('canvas'); tmp.width = n; tmp.height = n;
+    tmp.getContext('2d').putImageData(new ImageData(data, n, n), 0, 0);
+    ctx.drawImage(tmp, 0, 0, c.width, c.height);
+    var q = c.width / 8;
+    ctx.strokeStyle = 'rgba(214,164,70,0.7)'; ctx.lineWidth = 2; ctx.beginPath();
+    for (var i = 1; i < 8; i++) { ctx.moveTo(i * q, 0); ctx.lineTo(i * q, c.height); ctx.moveTo(0, i * q); ctx.lineTo(c.width, i * q); }
+    ctx.stroke();
+    ctx.font = '600 26px "IBM Plex Mono", monospace'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.fillStyle = '#fff';
+    for (var f = 0; f < 8; f++) { var t = 'abcdefgh'[f]; ctx.strokeText(t, f * q + q - 24, c.height - 10); ctx.fillText(t, f * q + q - 24, c.height - 10); }
+    for (var r = 0; r < 8; r++) { var u = String(8 - r); ctx.strokeText(u, 8, r * q + 28); ctx.fillText(u, 8, r * q + 28); }
+  }
+  $('orRotate').addEventListener('click', function () { or.rot = (or.rot + 1) % 4; drawOrient(); });
+  $('orRedo').addEventListener('click', function () { $('orient').hidden = true; openEditor(or.photo, or.cw, false, function (pts) { startOrient(or.photo, pts); }); });
+  $('orOk').addEventListener('click', function () {
+    var corners = V.rotateCorners(or.cw, or.rot);
+    S.corners = toNorm(corners, or.photo);
+    templates = new Array(64).fill(null);
+    setRef(V.sampleSquares(or.photo.img, V.boardH(corners)), START_BOARD);
+    S.moves = []; game = new Chess(); S.lean = V.newLean(); S.phase = 'play'; last = null; S.assumed = null; S.advice = null;
+    announcedFen = null; pendingSay = '';
+    watch.prev = null; watch.motion = false; watch.quiet = 0; watch.attempts = 0; watch.t = NO_MOTION;
+    closeOverlays();
+    setStatus('watch', 'Watching');
+    if (S.side === 'b') speak('Board locked. Waiting for White.');
+    onPosition();
+  });
+
+  // ---------- screen wake ----------
+  var wakeLock = null;
+  function wake() {
+    try {
+      if (navigator.wakeLock && document.visibilityState === 'visible' && !wakeLock) {
+        navigator.wakeLock.request('screen').then(function (l) { wakeLock = l; l.addEventListener('release', function () { wakeLock = null; }); }).catch(function () {});
+      }
+    } catch (e) { /* not available */ }
+  }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && cam.on) { wake(); watch.prev = null; } });
+
+  // ---------- boot ----------
+  load();
+  if (S.ref) rememberEmpties(S.ref.feats, S.ref.board);
+  renderAll();
+  startEngine();
+  if (window.BOARDSCAN_TEST) window.BOARDSCAN_TEST({ S: S, getGame: function () { return game; }, getLast: function () { return last; },
+    // test only: retake the reference photo now without changing what it is labelled as (simulates a misread)
+    retakeRef: function () { var fr = grabFrame(true), r = V.readBoard(fr.img, V.boardH(toPx(S.corners, fr)), S.ref.feats, S.ref.board, [{ board: S.ref.board, bonus: 0, moves: [] }], { t0: watch.t }); S.ref = { feats: r.reg.feats, board: S.ref.board }; }, watch: watch, mic: mic, onHeard: onHeard, engine: engine });
+})();
+
+</script>
+
+</body>
+</html>
